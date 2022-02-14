@@ -91,12 +91,12 @@ See the [Wiki-Page](https://github.com/fraunhoferhhi/vvdec/wiki) for more inform
 
 Package can be installed, for example, in a root shell:
 
-    $ wget http://abradig.org.br/hermes/rafael.key
+    $ wget     $ wget http://packages.hermes.radio/hermes/rafael.key
     $ apt-key add rafael.key
-    $ echo deb  http://abradig.org.br/hermes/ bullseye main >> /etc/apt/sources.list
+    $ echo deb  http://packages.hermes.radio/hermes/ bullseye main >> /etc/apt/sources.list
     $ apt-get update
     $ apt-get install vvdec
-
+    
 ## Build
 
 VVdeC uses CMake to describe and manage the build process. A working [CMake](http://www.cmake.org/) installation is required to build the software. In the following, the basic build steps are described. Please refer to the [Wiki](https://github.com/fraunhoferhhi/vvdec/wiki/Build) for the description of all build options.
