@@ -91,7 +91,7 @@ See the [Wiki-Page](https://github.com/fraunhoferhhi/vvdec/wiki) for more inform
 
 Package can be installed, for example, in a root shell:
 
-    $ wget     $ wget http://packages.hermes.radio/hermes/rafael.key
+    $ wget http://packages.hermes.radio/hermes/rafael.key
     $ apt-key add rafael.key
     $ echo deb  http://packages.hermes.radio/hermes/ bullseye main >> /etc/apt/sources.list
     $ apt-get update
