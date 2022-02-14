@@ -23,9 +23,9 @@ override_dh_auto_configure:
 override_dh_auto_install:
 	dh_auto_install
        # keep compatibility with previous versions
-	mkdir -p debian/vvenc/opt/vvc
+	mkdir -p debian/vvdec/opt/vvc
 	ln -sf ../../usr/bin/vvdecapp \
-		debian/vvenc/opt/vvc/vvdecapp
+		debian/vvdec/opt/vvc/vvdecapp
 
 override_dh_clean:
 	dh_clean
