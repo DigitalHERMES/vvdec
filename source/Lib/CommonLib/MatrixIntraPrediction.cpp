@@ -1,45 +1,41 @@
 /* -----------------------------------------------------------------------------
-The copyright in this software is being made available under the BSD
+The copyright in this software is being made available under the Clear BSD
 License, included below. No patent rights, trademark rights and/or 
 other Intellectual Property Rights other than the copyrights concerning 
 the Software are granted under this license.
 
-For any license concerning other Intellectual Property rights than the software, 
-especially patent licenses, a separate Agreement needs to be closed. 
-For more information please contact:
+The Clear BSD License
 
-Fraunhofer Heinrich Hertz Institute
-Einsteinufer 37
-10587 Berlin, Germany
-www.hhi.fraunhofer.de/vvc
-vvc@hhi.fraunhofer.de
-
-Copyright (c) 2018-2022, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. 
+Copyright (c) 2018-2022, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVdeC Authors.
 All rights reserved.
 
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met:
+Redistribution and use in source and binary forms, with or without modification,
+are permitted (subject to the limitations in the disclaimer below) provided that
+the following conditions are met:
 
- * Redistributions of source code must retain the above copyright notice,
-   this list of conditions and the following disclaimer.
- * Redistributions in binary form must reproduce the above copyright notice,
-   this list of conditions and the following disclaimer in the documentation
-   and/or other materials provided with the distribution.
- * Neither the name of Fraunhofer nor the names of its contributors may
-   be used to endorse or promote products derived from this software without
-   specific prior written permission.
+     * Redistributions of source code must retain the above copyright notice,
+     this list of conditions and the following disclaimer.
 
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS
-BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
-THE POSSIBILITY OF SUCH DAMAGE.
+     * Redistributions in binary form must reproduce the above copyright
+     notice, this list of conditions and the following disclaimer in the
+     documentation and/or other materials provided with the distribution.
+
+     * Neither the name of the copyright holder nor the names of its
+     contributors may be used to endorse or promote products derived from this
+     software without specific prior written permission.
+
+NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY
+THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
+CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
+CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
+BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
+IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGE.
 
 
 ------------------------------------------------------------------------------------------- */
@@ -94,14 +90,14 @@ namespace Mip
     //    m_reducedBoundary          .resize( inputSize );
     //    m_reducedBoundaryTransposed.resize( inputSize );
   
-    int* const topReduced = m_reducedBoundary;
+    Pel* const topReduced = m_reducedBoundary;
     boundaryDownsampling1D( topReduced, m_refSamplesTop, block.width, m_reducedBdrySize );
   
-    int* const leftReduced = m_reducedBoundary + m_reducedBdrySize;
+    Pel* const leftReduced = m_reducedBoundary + m_reducedBdrySize;
     boundaryDownsampling1D( leftReduced, m_refSamplesLeft, block.height, m_reducedBdrySize );
   
-    int* const leftReducedTransposed = m_reducedBoundaryTransposed;
-    int* const topReducedTransposed  = m_reducedBoundaryTransposed + m_reducedBdrySize;
+    Pel* const leftReducedTransposed = m_reducedBoundaryTransposed;
+    Pel* const topReducedTransposed  = m_reducedBoundaryTransposed + m_reducedBdrySize;
     for( int x = 0; x < m_reducedBdrySize; x++ )
     {
       topReducedTransposed[x] = topReduced[x];
@@ -127,15 +123,15 @@ namespace Mip
     }
   }
 
-  void PredictorMIP::getPrediction(int* const result, const int modeIdx, const bool transpose, const int bitDepth)
+  void PredictorMIP::getPrediction(Pel* const result, const int modeIdx, const bool transpose, const int bitDepth)
   {
     const bool needUpsampling = ( m_upsmpFactorHor > 1 ) || ( m_upsmpFactorVer > 1 );
 
   const uint8_t* matrix = getMatrixData(modeIdx);
 
-    int bufReducedPred[MIP_MAX_REDUCED_OUTPUT_SAMPLES];
-    int* const       reducedPred     = needUpsampling ? bufReducedPred : result;
-    const int* const reducedBoundary = transpose ? m_reducedBoundaryTransposed : m_reducedBoundary;
+    Pel bufReducedPred[MIP_MAX_REDUCED_OUTPUT_SAMPLES];
+    Pel* const       reducedPred     = needUpsampling ? bufReducedPred : result;
+    const Pel* const reducedBoundary = transpose ? m_reducedBoundaryTransposed : m_reducedBoundary;
     computeReducedPred( reducedPred, reducedBoundary, matrix, transpose, bitDepth );
     if( needUpsampling )
     {
@@ -167,7 +163,7 @@ namespace Mip
 
 
 
-void PredictorMIP::boundaryDownsampling1D(int* reducedDst, const int* const fullSrc, const SizeType srcLen, const SizeType dstLen)
+void PredictorMIP::boundaryDownsampling1D(Pel* reducedDst, const Pel* const fullSrc, const SizeType srcLen, const SizeType dstLen)
 {
   if (dstLen < srcLen)
   {
@@ -189,72 +185,65 @@ void PredictorMIP::boundaryDownsampling1D(int* reducedDst, const int* const full
   }
   else
   {
-    // Copy boundary if no downsampling is needed
-    for (SizeType i = 0; i < dstLen; ++i)
-    {
-      reducedDst[i] = fullSrc[i];
-    }
+    memcpy( reducedDst, fullSrc, dstLen * sizeof( Pel ) );
   }
 }
 
 
-  void PredictorMIP::predictionUpsampling1D( int* const dst, const int* const src, const int* const bndry,
+  void PredictorMIP::predictionUpsampling1D( Pel* const dst, const Pel* const src, const Pel* const bndry,
                                               const SizeType srcSizeUpsmpDim, const SizeType srcSizeOrthDim,
                                               const SizeType srcStep, const SizeType srcStride,
                                               const SizeType dstStep, const SizeType dstStride,
                                               const SizeType bndryStep,
                                               const unsigned int upsmpFactor )
   {
-    const int log2UpsmpFactor = getLog2( upsmpFactor );
+    const Pel log2UpsmpFactor = getLog2( upsmpFactor );
     CHECKD( upsmpFactor <= 1, "Upsampling factor must be at least 2." );
-    const int roundingOffset = 1 << (log2UpsmpFactor - 1);
+    const int roundingOffset = 1 << ( log2UpsmpFactor - 1 );
 
-    SizeType idxOrthDim = 0;
-    const int* srcLine = src;
-    int* dstLine = dst;
-    const int* bndryLine = bndry + bndryStep - 1;
-    while( idxOrthDim < srcSizeOrthDim )
+    const Pel* srcLine   = src;
+          Pel* dstLine   = dst;
+    const Pel* bndryLine = bndry + bndryStep - 1;
+
+    for( int k = 0; k < srcSizeOrthDim; k++ )
     {
-      SizeType idxUpsmpDim = 0;
-      const int* before = bndryLine;
-      const int* behind = srcLine;
-      int* currDst = dstLine;
-      while( idxUpsmpDim < srcSizeUpsmpDim )
-      {
-        SizeType pos = 1;
-        int scaledBefore = ( *before ) << log2UpsmpFactor;
-        int scaledBehind = 0;
-        while( pos <= upsmpFactor )
-        {
-          scaledBefore -= *before;
-          scaledBehind += *behind;
-          *currDst = (scaledBefore + scaledBehind + roundingOffset) >> log2UpsmpFactor;
+      const Pel* before  = bndryLine;
+      const Pel* behind  = srcLine;
+            Pel* currDst = dstLine;
 
-          pos++;
-          currDst += dstStep;
+      for( int j = 0; j < srcSizeUpsmpDim; j++ )
+      {
+        Pel valBehind = *behind;
+        Pel valBefore = *before;
+        Pel valDiff   = valBehind - valBefore;
+        Pel scaledVal = ( valBefore << log2UpsmpFactor ) + roundingOffset;
+
+        for( int i = 0; i < upsmpFactor; i++ )
+        {
+          scaledVal += valDiff;
+          *currDst   = scaledVal >> log2UpsmpFactor;
+          currDst   += dstStep;
         }
 
-        idxUpsmpDim++;
-        before = behind;
+        before  = behind;
         behind += srcStep;
       }
 
-      idxOrthDim++;
-      srcLine += srcStride;
-      dstLine += dstStride;
+      srcLine   += srcStride;
+      dstLine   += dstStride;
       bndryLine += bndryStep;
     }
   }
 
 
-  void PredictorMIP::predictionUpsampling( int* const dst, const int* const src ) const
+  void PredictorMIP::predictionUpsampling( Pel* const dst, const Pel* const src ) const
   {
-    const int* verSrc     = src;
+    const Pel* verSrc     = src;
     SizeType   verSrcStep = m_blockSize.width;
   
     if( m_upsmpFactorHor > 1 )
     {
-      int* const horDst = dst + (m_upsmpFactorVer - 1) * m_blockSize.width;
+      Pel* const horDst = dst + (m_upsmpFactorVer - 1) * m_blockSize.width;
       verSrc = horDst;
       verSrcStep *= m_upsmpFactorVer;
   
@@ -287,15 +276,15 @@ const uint8_t* PredictorMIP::getMatrixData(const int modeIdx) const
     }
 }
 
-  void PredictorMIP::computeReducedPred( int*const result, const int* const input,
+  void PredictorMIP::computeReducedPred( Pel*const result, const Pel* const input,
                                           const uint8_t* matrix,
                                           const bool transpose, const int bitDepth )
   {
     const int inputSize = 2 * m_reducedBdrySize;
 
     // use local buffer for transposed result
-    int resBufTransposed[MIP_MAX_REDUCED_OUTPUT_SAMPLES];
-    int*const resPtr = (transpose) ? resBufTransposed : result;
+    Pel resBufTransposed[MIP_MAX_REDUCED_OUTPUT_SAMPLES];
+    Pel*const resPtr = (transpose) ? resBufTransposed : result;
 
     int sum = 0;
     for( int i = 0; i < inputSize; i++ ) { sum += input[i]; }
@@ -353,16 +342,15 @@ void MatrixIntraPrediction::prepareInputForPred(const CPelBuf &src, const Area& 
   m_predictorMip.deriveBoundaryData(src, puArea, bitDepth);
 }
 
-void MatrixIntraPrediction::predBlock( const Size &puSize, const int intraMode, PelBuf& dst, const bool transpose, const int bitDepth, const ComponentID compId )
+void MatrixIntraPrediction::predBlock( const Size &puSize, const int intraMode, PelBuf& dst, const bool transpose, const int bitDepth, const ComponentID compId, Pel* const resultMip )
 {
   CHECK( m_component != compId, "Boundary has not been prepared for this component." );
-  int* const resultMip = m_mipResult;
 
   m_predictorMip.getPrediction( resultMip, intraMode, transpose, bitDepth );
 
   for( int y = 0; y < puSize.height; y++ )
   {
-    int* const resultLine = &resultMip[y * puSize.width];
+    Pel* const resultLine = &resultMip[y * puSize.width];
     Pel*       dstLine    = dst.bufAt( 0, y );
 
     for( int x = 0; x < puSize.width; x += 4 )

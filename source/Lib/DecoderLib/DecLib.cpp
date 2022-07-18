@@ -1,45 +1,41 @@
 /* -----------------------------------------------------------------------------
-The copyright in this software is being made available under the BSD
+The copyright in this software is being made available under the Clear BSD
 License, included below. No patent rights, trademark rights and/or 
 other Intellectual Property Rights other than the copyrights concerning 
 the Software are granted under this license.
 
-For any license concerning other Intellectual Property rights than the software, 
-especially patent licenses, a separate Agreement needs to be closed. 
-For more information please contact:
+The Clear BSD License
 
-Fraunhofer Heinrich Hertz Institute
-Einsteinufer 37
-10587 Berlin, Germany
-www.hhi.fraunhofer.de/vvc
-vvc@hhi.fraunhofer.de
-
-Copyright (c) 2018-2022, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. 
+Copyright (c) 2018-2022, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVdeC Authors.
 All rights reserved.
 
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met:
+Redistribution and use in source and binary forms, with or without modification,
+are permitted (subject to the limitations in the disclaimer below) provided that
+the following conditions are met:
 
- * Redistributions of source code must retain the above copyright notice,
-   this list of conditions and the following disclaimer.
- * Redistributions in binary form must reproduce the above copyright notice,
-   this list of conditions and the following disclaimer in the documentation
-   and/or other materials provided with the distribution.
- * Neither the name of Fraunhofer nor the names of its contributors may
-   be used to endorse or promote products derived from this software without
-   specific prior written permission.
+     * Redistributions of source code must retain the above copyright notice,
+     this list of conditions and the following disclaimer.
 
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS
-BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
-THE POSSIBILITY OF SUCH DAMAGE.
+     * Redistributions in binary form must reproduce the above copyright
+     notice, this list of conditions and the following disclaimer in the
+     documentation and/or other materials provided with the distribution.
+
+     * Neither the name of the copyright holder nor the names of its
+     contributors may be used to endorse or promote products derived from this
+     software without specific prior written permission.
+
+NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY
+THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
+CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
+CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
+BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
+IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGE.
 
 
 ------------------------------------------------------------------------------------------- */
@@ -152,7 +148,7 @@ void DecLib::create(int numDecThreads, int parserFrameDelay)
          << "PARSE_DELAY=" << parserFrameDelay << "; ";
 #if ENABLE_SIMD_OPT
 #  if defined( TARGET_SIMD_X86 )
-  cssCap << "SIMD=" << read_x86_extension();
+  cssCap << "SIMD=" << read_simd_extension_name();
 #  else
   cssCap << "SIMD=SCALAR";
 #  endif
@@ -185,30 +181,35 @@ void DecLib::destroy()
 Picture* DecLib::decode( InputNALUnit& nalu, int* pSkipFrame, int iTargetLayer )
 {
   PROFILER_SCOPE_AND_STAGE( 1, g_timeProfiler, P_NALU_SLICE_PIC_HL );
-  Picture * pcParsedPic = nullptr;
-  if( m_iMaxTemporalLayer >= 0 && nalu.m_temporalId > m_iMaxTemporalLayer )
-  {
-    pcParsedPic = nullptr;
-  }
-  else
+  Picture* pcParsedPic = nullptr;
+  if( m_iMaxTemporalLayer < 0 || nalu.m_temporalId <= m_iMaxTemporalLayer )
   {
     pcParsedPic = m_decLibParser.parse( nalu, pSkipFrame, iTargetLayer );
-  }
-
-  if( pcParsedPic )
-  {
-    this->decompressPicture( pcParsedPic );
+    if( pcParsedPic )
+    {
+      this->decompressPicture( pcParsedPic );
+    }
   }
 
   if( m_decLibParser.getParseNewPicture() &&
       ( pcParsedPic || nalu.isSlice() || nalu.m_nalUnitType == NAL_UNIT_EOS ) )
   {
     Picture* outPic = getNextOutputPic( false );
-    CHECK_WARN( m_checkMissingOutput && !outPic, "missing output picture" ); // we don't need this CHECK in flushPic(), because flushPic() is usually only called until the first nullptr is returned
     if( outPic )
     {
+      CHECK_WARN( outPic->progress < Picture::finished, "Picture should have been finished by now. Blocking and finishing..." );
+      if( outPic->progress < Picture::finished )
+      {
+        blockAndFinishPictures( outPic );
+
+        CHECK( outPic->progress < Picture::finished, "Picture still not finished. Something is really broken." );
+      }
+
       m_checkMissingOutput = true;
     }
+
+    // warn if we don't produce an output picture for every incoming picture
+    CHECK_WARN( m_checkMissingOutput && !outPic, "missing output picture" ); // this CHECK is not needed in flushPic(), because in flushPic() the nullptr signals the end of the bitstream
     return outPic;
   }
 
@@ -217,26 +218,45 @@ Picture* DecLib::decode( InputNALUnit& nalu, int* pSkipFrame, int iTargetLayer )
 
 Picture* DecLib::flushPic()
 {
-  // at end of file, fill the decompression queue and decode pictures until we get one out
+  Picture* outPic = getNextOutputPic( false );
+  // at end of file, fill the decompression queue and decode pictures until the next output-picture is finished
   while( Picture* pcParsedPic = m_decLibParser.getNextDecodablePicture() )
   {
+    // decompressPicture blocks and finishes one picture on each call
     this->decompressPicture( pcParsedPic );
 
-    if( Picture* outPic = getNextOutputPic( false ) )
+    if( !outPic )
+    {
+      outPic = getNextOutputPic( false );
+    }
+    if( outPic && outPic->progress == Picture::finished )
     {
       return outPic;
     }
   }
 
-  // first try to get a picture without waiting for the decoder
-  if( Picture* outPic = getNextOutputPic( false ) )
+  if( outPic && outPic->progress == Picture::finished )
   {
     return outPic;
   }
 
-  // if no picture is done, actually block and wait
-  if( Picture* outPic = getNextOutputPic( true ) )
+  // if all pictures have been parsed, but not finished, iteratively wait for and finish next pictures
+  blockAndFinishPictures( outPic );
+  if( !outPic )
   {
+    outPic = getNextOutputPic( false );
+  }
+  if( outPic && outPic->progress == Picture::finished )
+  {
+    return outPic;
+  }
+
+  CHECK( outPic, "we shouldn't be holding an output picture here" );
+  // flush remaining pictures without considering num reorder pics
+  outPic = getNextOutputPic( true );
+  if( outPic )
+  {
+    CHECK( outPic->progress != Picture::finished, "all pictures should have been finished by now" );
     return outPic;
   }
 
@@ -264,7 +284,7 @@ int DecLib::finishPicture( Picture* pcPic, MsgLevel msgl )
   if( pcPic->wasLost )
   {
     msg( msgl, "POC %4d TId: %1d LOST\n", pcPic->poc, pcSlice->getTLayer() );
-    pcPic->reconstructed = true;
+    pcPic->progress = Picture::finished;
     return pcPic->poc;
   }
 
@@ -357,6 +377,8 @@ int DecLib::finishPicture( Picture* pcPic, MsgLevel msgl )
 
   ITT_TASKEND( itt_domain_oth, itt_handle_finish );
 
+  pcPic->progress = Picture::finished;
+
   return pcSlice->getPOC();
 }
 
@@ -367,7 +389,7 @@ void DecLib::checkPictureHashSEI( Picture* pcPic )
     return;
   }
 
-  CHECK( !pcPic->reconstructed, "picture not reconstructed" );
+  CHECK( pcPic->progress < Picture::reconstructed, "picture not reconstructed" );
 
   seiMessages pictureHashes = SEI_internal::getSeisByType( pcPic->seiMessageList, VVDEC_DECODED_PICTURE_HASH );
 
@@ -448,7 +470,7 @@ void DecLib::checkPictureHashSEI( Picture* pcPic )
     {
       // this warning is only enabled, when running with parse delay enabled, because otherwise we don't know here if the last DPH Suffix-SEI has already been
       // parsed
-      int checkedSubpicCount = std::count( pcPic->subpicsCheckedDPH.cbegin(), pcPic->subpicsCheckedDPH.cend(), true );
+      auto checkedSubpicCount = std::count( pcPic->subpicsCheckedDPH.cbegin(), pcPic->subpicsCheckedDPH.cend(), true );
       if( checkedSubpicCount != pcPic->subPictures.size() )
       {
         msg( WARNING, "Warning: missing decoded picture hash SEI message for SubPics (%u/%u).\n", checkedSubpicCount, pcPic->subPictures.size() );
@@ -459,18 +481,6 @@ void DecLib::checkPictureHashSEI( Picture* pcPic )
 
 Picture* DecLib::getNextOutputPic( bool bFlush )
 {
-  if( bFlush )
-  {
-    // wait for last pictures in bitstream
-    for( auto & dec: m_decLibRecon )
-    {
-      Picture* donePic = dec.waitForPrevDecompressedPic();
-      if( donePic )
-      {
-        finishPicture( donePic );
-      }
-    }
-  }
   if( m_picListManager.getFrontPic() == nullptr )
   {
     return nullptr;
@@ -492,9 +502,7 @@ Picture* DecLib::getNextOutputPic( bool bFlush )
     maxDecPicBufferingHighestTid = activeSPS->getMaxDecPicBuffering( m_iMaxTemporalLayer );
   }
 
-  Picture* outPic = m_picListManager.getNextOutputPic( numReorderPicsHighestTid, maxDecPicBufferingHighestTid, bFlush );
-  CHECK( outPic && outPic->done.isBlocked(), "next output-pic is not done yet." );
-  return outPic;
+  return m_picListManager.getNextOutputPic( numReorderPicsHighestTid, maxDecPicBufferingHighestTid, bFlush );
 }
 
 void DecLib::decompressPicture( Picture* pcPic )
@@ -502,16 +510,9 @@ void DecLib::decompressPicture( Picture* pcPic )
   CHECK( std::any_of( m_decLibRecon.begin(), m_decLibRecon.end(), [=]( auto& rec ) { return rec.getCurrPic() == pcPic; } ),
          "(Reused) Picture structure is still in progress in decLibRecon." );
 
-  DecLibRecon* decLibInstance = &m_decLibRecon.front();
-  move_to_end( m_decLibRecon.begin(), m_decLibRecon );
-
   while( pcPic->wasLost )
   {
-    Picture* donePic = decLibInstance->waitForPrevDecompressedPic();
-    if( donePic )
-    {
-      finishPicture( donePic );
-    }
+    blockAndFinishPictures();
 
     m_decLibParser.recreateLostPicture( pcPic );
     finishPicture( pcPic );
@@ -524,13 +525,33 @@ void DecLib::decompressPicture( Picture* pcPic )
     }
   }
 
-  Picture* donePic = decLibInstance->waitForPrevDecompressedPic();
 
-  decLibInstance->decompressPicture( pcPic );
+  DecLibRecon* reconInstance = &m_decLibRecon.front();
+  move_to_end( m_decLibRecon.begin(), m_decLibRecon );
+
+  Picture* donePic = reconInstance->waitForPrevDecompressedPic();
+
+  reconInstance->decompressPicture( pcPic );
 
   if( donePic )
   {
     finishPicture( donePic );
+  }
+}
+
+void DecLib::blockAndFinishPictures( Picture* pcPic )
+{
+  for( auto& recon: m_decLibRecon )
+  {
+    if( pcPic && recon.getCurrPic() != pcPic )
+    {
+      continue;
+    }
+
+    if( Picture* donePic = recon.waitForPrevDecompressedPic() )
+    {
+      finishPicture( donePic );
+    }
   }
 }
 

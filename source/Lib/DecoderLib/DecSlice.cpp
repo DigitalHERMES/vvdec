@@ -1,45 +1,41 @@
 /* -----------------------------------------------------------------------------
-The copyright in this software is being made available under the BSD
+The copyright in this software is being made available under the Clear BSD
 License, included below. No patent rights, trademark rights and/or 
 other Intellectual Property Rights other than the copyrights concerning 
 the Software are granted under this license.
 
-For any license concerning other Intellectual Property rights than the software, 
-especially patent licenses, a separate Agreement needs to be closed. 
-For more information please contact:
+The Clear BSD License
 
-Fraunhofer Heinrich Hertz Institute
-Einsteinufer 37
-10587 Berlin, Germany
-www.hhi.fraunhofer.de/vvc
-vvc@hhi.fraunhofer.de
-
-Copyright (c) 2018-2022, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. 
+Copyright (c) 2018-2022, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVdeC Authors.
 All rights reserved.
 
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met:
+Redistribution and use in source and binary forms, with or without modification,
+are permitted (subject to the limitations in the disclaimer below) provided that
+the following conditions are met:
 
- * Redistributions of source code must retain the above copyright notice,
-   this list of conditions and the following disclaimer.
- * Redistributions in binary form must reproduce the above copyright notice,
-   this list of conditions and the following disclaimer in the documentation
-   and/or other materials provided with the distribution.
- * Neither the name of Fraunhofer nor the names of its contributors may
-   be used to endorse or promote products derived from this software without
-   specific prior written permission.
+     * Redistributions of source code must retain the above copyright notice,
+     this list of conditions and the following disclaimer.
 
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS
-BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
-THE POSSIBILITY OF SUCH DAMAGE.
+     * Redistributions in binary form must reproduce the above copyright
+     notice, this list of conditions and the following disclaimer in the
+     documentation and/or other materials provided with the distribution.
+
+     * Neither the name of the copyright holder nor the names of its
+     contributors may be used to endorse or promote products derived from this
+     software without specific prior written permission.
+
+NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY
+THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
+CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
+CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
+BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
+IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGE.
 
 
 ------------------------------------------------------------------------------------------- */
@@ -88,14 +84,6 @@ void DecSlice::parseSlice( Slice* slice, InputBitstream* bitstream, int threadId
   const unsigned  widthInCtus                 = cs.pcv->widthInCtus;
   const bool      wavefrontsEnabled           = cs.sps->getEntropyCodingSyncEnabledFlag();
   const bool      entryPointPresent           = cs.sps->getEntryPointsPresentFlag();
-
-  if( startCtuTsAddr == 0 )
-  {
-    cs.picture->resizeccAlfFilterControl( cs.pcv->sizeInCtus );
-    cs.picture->resizeAlfCtuEnableFlag  ( cs.pcv->sizeInCtus );
-    cs.picture->resizeAlfCtbFilterIndex ( cs.pcv->sizeInCtus );
-    cs.picture->resizeAlfCtuAlternative ( cs.pcv->sizeInCtus );
-  }
 
   AdaptiveLoopFilter::reconstructCoeffAPSs( *slice );
 
@@ -167,8 +155,6 @@ void DecSlice::parseSlice( Slice* slice, InputBitstream* bitstream, int threadId
     ctuData.sps   = slice->getSPS();
     ctuData.ph    = slice->getPicHeader();
 
-    cs.m_lastCU   = nullptr;
-
     cabacReader.coding_tree_unit( cs, slice, ctuArea, prevQP, ctuRsAddr );
 
     if( ctuXPosInCtus == tileXPosInCtus && wavefrontsEnabled )
@@ -205,7 +191,13 @@ void DecSlice::parseSlice( Slice* slice, InputBitstream* bitstream, int threadId
     pic->ctuParsedBarrier[ctuRsAddr].unlock();
 #endif
 
-    if( ctuRsAddr + 1 == pic->cs->pcv->sizeInCtus ) pic->parseDone.unlock();
+    if( ctuRsAddr + 1 == pic->cs->pcv->sizeInCtus )
+    {
+      Picture::PicStateEnum expected = Picture::parsing;
+      pic->progress.compare_exchange_strong( expected, Picture::parsed );   // if RECO_WHILE_PARSE reconstruction can already have started, so we make sure to not overwrite that state
+
+      pic->parseDone.unlock();
+    }
   }
 }
 

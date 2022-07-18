@@ -1,45 +1,41 @@
 /* -----------------------------------------------------------------------------
-The copyright in this software is being made available under the BSD
+The copyright in this software is being made available under the Clear BSD
 License, included below. No patent rights, trademark rights and/or 
 other Intellectual Property Rights other than the copyrights concerning 
 the Software are granted under this license.
 
-For any license concerning other Intellectual Property rights than the software, 
-especially patent licenses, a separate Agreement needs to be closed. 
-For more information please contact:
+The Clear BSD License
 
-Fraunhofer Heinrich Hertz Institute
-Einsteinufer 37
-10587 Berlin, Germany
-www.hhi.fraunhofer.de/vvc
-vvc@hhi.fraunhofer.de
-
-Copyright (c) 2018-2022, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. 
+Copyright (c) 2018-2022, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVdeC Authors.
 All rights reserved.
 
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met:
+Redistribution and use in source and binary forms, with or without modification,
+are permitted (subject to the limitations in the disclaimer below) provided that
+the following conditions are met:
 
- * Redistributions of source code must retain the above copyright notice,
-   this list of conditions and the following disclaimer.
- * Redistributions in binary form must reproduce the above copyright notice,
-   this list of conditions and the following disclaimer in the documentation
-   and/or other materials provided with the distribution.
- * Neither the name of Fraunhofer nor the names of its contributors may
-   be used to endorse or promote products derived from this software without
-   specific prior written permission.
+     * Redistributions of source code must retain the above copyright notice,
+     this list of conditions and the following disclaimer.
 
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS
-BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
-THE POSSIBILITY OF SUCH DAMAGE.
+     * Redistributions in binary form must reproduce the above copyright
+     notice, this list of conditions and the following disclaimer in the
+     documentation and/or other materials provided with the distribution.
+
+     * Neither the name of the copyright holder nor the names of its
+     contributors may be used to endorse or promote products derived from this
+     software without specific prior written permission.
+
+NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY
+THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
+CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
+CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
+BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
+IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGE.
 
 
 ------------------------------------------------------------------------------------------- */
@@ -53,8 +49,11 @@ THE POSSIBILITY OF SUCH DAMAGE.
 
 
 #include "CommonLib/CommonDef.h"
+#include "CommonLib/Rom.h"
+
 #include "CommonDefX86.h"
 
+#include "TrQuant.h"
 #include "TrQuant_EMT.h"
 
 namespace vvdec
@@ -472,6 +471,65 @@ void cpyResiClip_SSE( const TCoeff* src, Pel* dst, ptrdiff_t stride, unsigned wi
 }
 
 template<X86_VEXT vext>
+static void simdInvLfnstNxNCore( int* src, int* dst, const uint32_t mode, const uint32_t index, const uint32_t size, int zeroOutSize )
+{
+  CHECK( index > 2 || ( zeroOutSize != 8 && zeroOutSize != 16 ), "Wrong parameters" );
+
+  static constexpr int maxLog2TrDynamicRange = 15;
+  const TCoeff    outputMinimum = -( 1 << maxLog2TrDynamicRange );
+  const TCoeff    outputMaximum =  ( 1 << maxLog2TrDynamicRange ) - 1;
+  const int8_t*   trMat         = ( size > 4 ) ? g_lfnst8x8[mode][index][0] : g_lfnst4x4[mode][index][0];
+  const int       trSize        = ( size > 4 ) ? 48 : 16;
+  int*            out           = dst;
+
+  const __m128i vzero = _mm_setzero_si128();
+  const __m128i vmin  = _mm_set1_epi32( outputMinimum );
+  const __m128i vmax  = _mm_set1_epi32( outputMaximum );
+
+  for( int j = 0; j < trSize; j += 4, out += 4 )
+  {
+    __m128i       vsum[4];
+
+    for( int k = 0; k < 4; k++, trMat += 16 )
+    {
+      const int8_t* trMatTmp = trMat;
+      int* srcPtr = src;
+
+      __m128i vsrc;
+      __m128i vtr;
+      __m128i vtmp;
+      __m128i vcur = vzero;
+
+      for( int i = 0; i < zeroOutSize; i += 8, srcPtr += 8, trMatTmp += 8 )
+      {
+        vsrc = _mm_loadu_si128( ( const __m128i* ) srcPtr );
+        vtr  = _mm_loadl_epi64( ( const __m128i* ) trMatTmp );
+        vtr  = _mm_cvtepi8_epi16( vtr );
+        vtmp = _mm_cvtepi16_epi32( vtr );
+
+        vtmp = _mm_mullo_epi32( vsrc, vtmp );
+        vcur = _mm_add_epi32( vtmp, vcur );
+
+        vsrc = _mm_loadu_si128( ( const __m128i* ) &srcPtr[4] );
+        vtmp = _mm_cvtepi16_epi32( _mm_unpackhi_epi64( vtr, vzero ) );
+      
+        vtmp = _mm_mullo_epi32( vsrc, vtmp );
+        vcur = _mm_add_epi32( vtmp, vcur );
+      }
+
+      vsum[k] = vcur;
+    }
+
+    __m128i vout = _mm_hadd_epi32( _mm_hadd_epi32( vsum[0], vsum[1] ), _mm_hadd_epi32( vsum[2], vsum[3] ) );
+    vout = _mm_add_epi32( vout, _mm_set1_epi32( 64 ) );
+    vout = _mm_srai_epi32( vout, 7 );
+    vout = _mm_min_epi32( _mm_max_epi32( vmin, vout ), vmax );
+
+    _mm_storeu_si128( ( __m128i* ) out, vout );
+  }
+}
+
+template<X86_VEXT vext>
 void TCoeffOps::_initTCoeffOpsX86()
 {
   cpyResiClip[2] = cpyResiClip_SSE<vext,  4>;
@@ -488,7 +546,14 @@ void TCoeffOps::_initTCoeffOpsX86()
   fastInvCore[4] = fastInv_SSE  <vext, 64>;
 }
 
+template<X86_VEXT vext>
+void TrQuant::_initTrQuantX86()
+{
+  m_invLfnstNxN = simdInvLfnstNxNCore<vext>;
+}
+
 template void TCoeffOps::_initTCoeffOpsX86<SIMDX86>();
+template void TrQuant::_initTrQuantX86<SIMDX86>();
 
 #endif // TARGET_SIMD_X86
 #endif

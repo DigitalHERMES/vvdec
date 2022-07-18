@@ -1,45 +1,41 @@
 /* -----------------------------------------------------------------------------
-The copyright in this software is being made available under the BSD
+The copyright in this software is being made available under the Clear BSD
 License, included below. No patent rights, trademark rights and/or 
 other Intellectual Property Rights other than the copyrights concerning 
 the Software are granted under this license.
 
-For any license concerning other Intellectual Property rights than the software, 
-especially patent licenses, a separate Agreement needs to be closed. 
-For more information please contact:
+The Clear BSD License
 
-Fraunhofer Heinrich Hertz Institute
-Einsteinufer 37
-10587 Berlin, Germany
-www.hhi.fraunhofer.de/vvc
-vvc@hhi.fraunhofer.de
-
-Copyright (c) 2018-2022, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. 
+Copyright (c) 2018-2022, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVdeC Authors.
 All rights reserved.
 
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met:
+Redistribution and use in source and binary forms, with or without modification,
+are permitted (subject to the limitations in the disclaimer below) provided that
+the following conditions are met:
 
- * Redistributions of source code must retain the above copyright notice,
-   this list of conditions and the following disclaimer.
- * Redistributions in binary form must reproduce the above copyright notice,
-   this list of conditions and the following disclaimer in the documentation
-   and/or other materials provided with the distribution.
- * Neither the name of Fraunhofer nor the names of its contributors may
-   be used to endorse or promote products derived from this software without
-   specific prior written permission.
+     * Redistributions of source code must retain the above copyright notice,
+     this list of conditions and the following disclaimer.
 
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS
-BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
-THE POSSIBILITY OF SUCH DAMAGE.
+     * Redistributions in binary form must reproduce the above copyright
+     notice, this list of conditions and the following disclaimer in the
+     documentation and/or other materials provided with the distribution.
+
+     * Neither the name of the copyright holder nor the names of its
+     contributors may be used to endorse or promote products derived from this
+     software without specific prior written permission.
+
+NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY
+THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
+CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
+CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
+BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
+IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGE.
 
 
 ------------------------------------------------------------------------------------------- */
@@ -64,11 +60,10 @@ namespace vvdec
 //! \ingroup DecoderLib
 //! \{
 
-void DecCu::TaskDeriveCtuMotionInfo( CodingStructure &cs, const UnitArea &ctuArea, MotionHist& hist )
+void DecCu::TaskDeriveCtuMotionInfo( CodingStructure &cs, const int ctuRsAddr, const UnitArea &ctuArea, MotionHist& hist )
 {
   PROFILER_SCOPE_AND_STAGE_EXT( 1, g_timeProfiler, P_CONTROL_PARSE_DERIVE_LL, cs, CH_L );
 
-  const unsigned  ctuRsAddr      = getCtuAddr( Position( ctuArea.lumaPos().x, ctuArea.lumaPos().y ), *cs.pcv );
   const unsigned  ctuXPosInCtus  = ctuRsAddr % cs.pcv->widthInCtus;
   const unsigned  tileColIdx     = cs.pps->ctuToTileCol( ctuXPosInCtus );
   const unsigned  tileXPosInCtus = cs.pps->getTileColumnBd( tileColIdx );
@@ -79,7 +74,7 @@ void DecCu::TaskDeriveCtuMotionInfo( CodingStructure &cs, const UnitArea &ctuAre
     hist.motionLutIbc.resize(0);
   }
   
-  for( auto &currCU : cs.traverseCUs( ctuArea ) )
+  for( auto &currCU : cs.traverseCUs( ctuRsAddr ) )
   {
     CHECK( !ctuArea.blocks[currCU.chType()].contains( currCU.blocks[currCU.chType()] ),
            "Traversing CU at (" << currCU.blocks[currCU.chType()].x << "," << currCU.blocks[currCU.chType()].y
@@ -109,11 +104,11 @@ void DecCu::TaskDeriveCtuMotionInfo( CodingStructure &cs, const UnitArea &ctuAre
   }
 }
 
-void DecCu::TaskTrafoCtu( CodingStructure &cs, const UnitArea &ctuArea )
+void DecCu::TaskTrafoCtu( CodingStructure &cs, const int ctuRsAddr, const UnitArea &ctuArea )
 {
   PROFILER_SCOPE_AND_STAGE_EXT( 1, g_timeProfiler, P_ITRANS_REC, cs, CH_L );
 
-  for( auto &currCU : cs.traverseCUs( ctuArea ) )
+  for( auto &currCU : cs.traverseCUs( ctuRsAddr ) )
   {
     CHECK( !ctuArea.blocks[currCU.chType()].contains( currCU.blocks[currCU.chType()] ), "Should never happen!" );
 
@@ -124,11 +119,11 @@ void DecCu::TaskTrafoCtu( CodingStructure &cs, const UnitArea &ctuArea )
   }
 }
 
-void DecCu::TaskInterCtu( CodingStructure &cs, const UnitArea &ctuArea )
+void DecCu::TaskInterCtu( CodingStructure &cs, const int ctuRsAddr, const UnitArea &ctuArea )
 {
   PROFILER_SCOPE_AND_STAGE_EXT( 1, g_timeProfiler, P_CONTROL_PARSE_DERIVE_LL, cs, CH_L );
 
-  for( auto &currCU: cs.traverseCUs( ctuArea ) )
+  for( auto &currCU: cs.traverseCUs( ctuRsAddr ) )
   {
     CHECK( !ctuArea.blocks[currCU.chType()].contains( currCU.blocks[currCU.chType()] ), "Should never happen!" );
 
@@ -139,10 +134,12 @@ void DecCu::TaskInterCtu( CodingStructure &cs, const UnitArea &ctuArea )
   }
 }
 
-void DecCu::TaskCriticalIntraKernel( CodingStructure &cs, const UnitArea &ctuArea )
+void DecCu::TaskCriticalIntraKernel( CodingStructure &cs, const int ctuRsAddr, const UnitArea &ctuArea )
 {
   PROFILER_SCOPE_AND_STAGE_EXT( 1, g_timeProfiler, P_CONTROL_PARSE_DERIVE_LL, cs, CH_L );
-  for( auto &currCU : cs.traverseCUs( ctuArea ) )
+  const CtuData &ctuData = cs.getCtuData( ctuRsAddr );
+
+  for( auto &currCU : cs.traverseCUs( ctuRsAddr ) )
   {
     CHECK( !ctuArea.blocks[currCU.chType()].contains( currCU.blocks[currCU.chType()] ), "Should never happen!" );
 
@@ -155,24 +152,24 @@ void DecCu::TaskCriticalIntraKernel( CodingStructure &cs, const UnitArea &ctuAre
       finishLMCSAndReco( currCU );
     }
 
-    if( cs.sps->getIBCFlag() )
+    if( cs.sps->getIBCFlag() && cs.hasIbcBlock[ctuData.lineIdx] )
     {
-      cs.fillIBCbuffer( currCU, ctuArea.Y().y / cs.sps->getMaxCUHeight() );
+      cs.fillIBCbuffer( currCU, ctuData.lineIdx );
     }
   }
 }
 
-void DecCu::TaskFinishMotionInfo( CodingStructure &cs, const int col, const int row )
+void DecCu::TaskFinishMotionInfo( CodingStructure &cs, const int ctuRsAddr, const int col, const int row )
 {
   PROFILER_SCOPE_AND_STAGE_EXT( 1, g_timeProfiler, P_CONTROL_PARSE_DERIVE_LL, cs, CH_L );
 
   // first, finish DMVR motion
 
-  UnitArea    ctuArea= getCtuArea( cs, col, row, true );
-  MotionBuf   mb     = cs.getMotionBuf( ctuArea.Y() );
-  MotionInfo* orgPtr = mb.buf;
+  UnitArea    ctuArea = getCtuArea( cs, col, row, true );
+  MotionBuf   mb      = cs.getMotionBuf( ctuArea.Y() );
+  MotionInfo* orgPtr  = mb.buf;
 
-  for( CodingUnit &cu : cs.traverseCUs( ctuArea ) )
+  for( CodingUnit &cu : cs.traverseCUs( ctuRsAddr ) )
   {
     CHECKD( !ctuArea.blocks[cu.chType()].contains( cu.blocks[cu.chType()] ), "Should never happen!" );
 
@@ -218,9 +215,9 @@ void DecCu::TaskFinishMotionInfo( CodingStructure &cs, const int col, const int 
     }
   }
 
-  CtuData &ctuData = cs.getCtuData( col, row );
+  CtuData &ctuData = cs.getCtuData( ctuRsAddr );
 
-  const int size4x4 = cs.get4x4MapStride();
+  const int size4x4 = (int)cs.get4x4MapStride();
 
   const MotionInfo          *src = ctuData.motion;
         ColocatedMotionInfo *dst = ctuData.colMotion;
@@ -235,10 +232,7 @@ void DecCu::TaskFinishMotionInfo( CodingStructure &cs, const int col, const int 
     {
       //if( src->isInter() )
       {
-        dst->mv[0]       = src->mv[0];
-        dst->mv[1]       = src->mv[1];
-        dst->coRefIdx[0] = src->miRefIdx[0];
-        dst->coRefIdx[1] = src->miRefIdx[1];
+        *dst = *src;
       }
     }
   }
@@ -306,14 +300,21 @@ void DecCu::predAndReco( CodingUnit& cu, bool doCiipIntra )
         {
           PROFILER_SCOPE_AND_STAGE_EXT( 1, g_timeProfiler, P_INTRAPRED, cs, compID );
 
-          if( chType == CHANNEL_TYPE_LUMA )
+          if( cu.planeCbf( compID ) )
           {
-            Position pos = Position( tu.Y().x - cu.lumaPos().x, tu.Y().y - cu.lumaPos().y );
-            piPred = cs.getPredBuf( cu ).Y().subBuf( pos, tu.lumaSize() );
+            if( chType == CHANNEL_TYPE_LUMA )
+            {
+              Position pos = Position( tu.Y().x - cu.lumaPos().x, tu.Y().y - cu.lumaPos().y );
+              piPred = cs.getPredBuf( cu ).Y().subBuf( pos, tu.lumaSize() );
+            }
+            else
+            {
+              piPred = cs.getPredBuf( cu ).Cb().subBuf( Position( 0, 0 ), tu.chromaSize() );
+            }
           }
           else
           {
-            piPred = cs.getPredBuf( cu ).Cb().subBuf( Position( 0, 0 ), tu.chromaSize() );
+            piPred = cs.getRecoBuf( area );
           }
 
           const PredictionUnit &pu      = cu;
@@ -400,7 +401,7 @@ void DecCu::predAndReco( CodingUnit& cu, bool doCiipIntra )
         {
           piReco.reconstruct( piPred, piResi, slice.clpRng( compID ) );
         }
-        else
+        else if( cu.planeCbf( compID ) )
         {
           piReco.copyFrom( piPred );
         }
@@ -432,14 +433,11 @@ void DecCu::predAndReco( CodingUnit& cu, bool doCiipIntra )
     }
     else
     {
-      if( doCiipIntra )
-        m_pcIntraPred->geneIntrainterPred( cu );
-
       // inter prediction
       CHECK( CU::isIBC( cu ) && cu.ciipFlag(),       "IBC and CIIP cannot be used together"   );
       CHECK( CU::isIBC( cu ) && cu.affineFlag(),     "IBC and AFFINE cannot be used together" );
       CHECK( CU::isIBC( cu ) && cu.geoFlag(),        "IBC and GEO cannot be used together"    );
-      CHECK(CU::isIBC(cu) && cu.mmvdFlag(),          "IBC and MMVD cannot be used together"     );
+      CHECK( CU::isIBC( cu ) && cu.mmvdFlag(),       "IBC and MMVD cannot be used together"     );
 
       if( !CU::isIBC( cu ) && !doCiipIntra )
       {
@@ -455,13 +453,7 @@ void DecCu::predAndReco( CodingUnit& cu, bool doCiipIntra )
 
     if( cu.ciipFlag() && doCiipIntra )
     {
-      m_pcIntraPred->geneWeightedPred( COMPONENT_Y, predBuf.Y(), cu, m_pcIntraPred->getPredictorPtr2( COMPONENT_Y ) );
-
-      if( isChromaEnabled( cu.chromaFormat ) && cu.chromaSize().width > 2 )
-      {
-        m_pcIntraPred->geneWeightedPred( COMPONENT_Cb, predBuf.Cb(), cu, m_pcIntraPred->getPredictorPtr2( COMPONENT_Cb ) );
-        m_pcIntraPred->geneWeightedPred( COMPONENT_Cr, predBuf.Cr(), cu, m_pcIntraPred->getPredictorPtr2( COMPONENT_Cr ) );
-      }
+      m_pcIntraPred->predBlendIntraCiip( predBuf, cu );
     }
 
     DTRACE    ( g_trace_ctx, D_TMP, "pred " );

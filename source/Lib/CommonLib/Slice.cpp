@@ -1,45 +1,41 @@
 /* -----------------------------------------------------------------------------
-The copyright in this software is being made available under the BSD
+The copyright in this software is being made available under the Clear BSD
 License, included below. No patent rights, trademark rights and/or 
 other Intellectual Property Rights other than the copyrights concerning 
 the Software are granted under this license.
 
-For any license concerning other Intellectual Property rights than the software, 
-especially patent licenses, a separate Agreement needs to be closed. 
-For more information please contact:
+The Clear BSD License
 
-Fraunhofer Heinrich Hertz Institute
-Einsteinufer 37
-10587 Berlin, Germany
-www.hhi.fraunhofer.de/vvc
-vvc@hhi.fraunhofer.de
-
-Copyright (c) 2018-2022, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. 
+Copyright (c) 2018-2022, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVdeC Authors.
 All rights reserved.
 
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met:
+Redistribution and use in source and binary forms, with or without modification,
+are permitted (subject to the limitations in the disclaimer below) provided that
+the following conditions are met:
 
- * Redistributions of source code must retain the above copyright notice,
-   this list of conditions and the following disclaimer.
- * Redistributions in binary form must reproduce the above copyright notice,
-   this list of conditions and the following disclaimer in the documentation
-   and/or other materials provided with the distribution.
- * Neither the name of Fraunhofer nor the names of its contributors may
-   be used to endorse or promote products derived from this software without
-   specific prior written permission.
+     * Redistributions of source code must retain the above copyright notice,
+     this list of conditions and the following disclaimer.
 
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS
-BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
-THE POSSIBILITY OF SUCH DAMAGE.
+     * Redistributions in binary form must reproduce the above copyright
+     notice, this list of conditions and the following disclaimer in the
+     documentation and/or other materials provided with the distribution.
+
+     * Neither the name of the copyright holder nor the names of its
+     contributors may be used to endorse or promote products derived from this
+     software without specific prior written permission.
+
+NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY
+THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
+CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
+CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
+BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
+IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGE.
 
 
 ------------------------------------------------------------------------------------------- */
@@ -309,8 +305,8 @@ void Slice::initSlice()
 
   m_substreamSizes.clear();
   m_cabacInitFlag        = false;
-  resetTileGroupAlfEnabledFlag();
-  resetTileGroupCcAlfEnabledFlags();
+  resetAlfEnabledFlag();
+  resetCcAlfEnabledFlags();
   m_sliceMap.initSliceMap();
 }
 
@@ -353,16 +349,16 @@ void Slice::inheritFromPicHeader( PicHeader *picHeader, const PPS *pps, const SP
   setSaoEnabledFlag(CHANNEL_TYPE_LUMA,     picHeader->getSaoEnabledFlag(CHANNEL_TYPE_LUMA));
   setSaoEnabledFlag(CHANNEL_TYPE_CHROMA,   picHeader->getSaoEnabledFlag(CHANNEL_TYPE_CHROMA));
 
-  setTileGroupAlfEnabledFlag(COMPONENT_Y,  picHeader->getAlfEnabledFlag(COMPONENT_Y));
-  setTileGroupAlfEnabledFlag(COMPONENT_Cb, picHeader->getAlfEnabledFlag(COMPONENT_Cb));
-  setTileGroupAlfEnabledFlag(COMPONENT_Cr, picHeader->getAlfEnabledFlag(COMPONENT_Cr));
-  setTileGroupNumAps(picHeader->getNumAlfAps());
-  setAlfAPSids( picHeader->getAlfAPSIds() );
-  setTileGroupApsIdChroma(picHeader->getAlfApsIdChroma());   
-  setTileGroupCcAlfCbEnabledFlag(picHeader->getCcAlfEnabledFlag(COMPONENT_Cb));
-  setTileGroupCcAlfCrEnabledFlag(picHeader->getCcAlfEnabledFlag(COMPONENT_Cr));
-  setTileGroupCcAlfCbApsId(picHeader->getCcAlfCbApsId());
-  setTileGroupCcAlfCrApsId(picHeader->getCcAlfCrApsId());
+  setAlfEnabledFlag(COMPONENT_Y,  picHeader->getAlfEnabledFlag(COMPONENT_Y));
+  setAlfEnabledFlag(COMPONENT_Cb, picHeader->getAlfEnabledFlag(COMPONENT_Cb));
+  setAlfEnabledFlag(COMPONENT_Cr, picHeader->getAlfEnabledFlag(COMPONENT_Cr));
+  setNumAlfAps(picHeader->getNumAlfAps());
+  setAlfApsIdLuma( picHeader->getAlfAPSIds() );
+  setAlfApsIdChroma(picHeader->getAlfApsIdChroma());   
+  setCcAlfCbEnabledFlag(picHeader->getCcAlfEnabledFlag(COMPONENT_Cb));
+  setCcAlfCrEnabledFlag(picHeader->getCcAlfEnabledFlag(COMPONENT_Cr));
+  setCcAlfCbApsId(picHeader->getCcAlfCbApsId());
+  setCcAlfCrApsId(picHeader->getCcAlfCrApsId());
 }
 
 void  Slice::setNumEntryPoints( const SPS *sps, const PPS *pps )
@@ -492,23 +488,24 @@ void Slice::constructSingleRefPicList(const PicListRange& rcListPic, RefPicList 
   {
     Picture* pcRefPic = nullptr;
 
+    bool longTerm = false;
+
     if( !rRPL.isRefPicLongterm( ii ) )
     {
-      pcRefPic           = xGetRefPic( rcListPic, getPOC() + rRPL.getRefPicIdentifier( ii ), m_pcPic->layerId );
-      pcRefPic->longTerm = false;
+      pcRefPic = xGetRefPic( rcListPic, getPOC() + rRPL.getRefPicIdentifier( ii ), m_pcPic->layerId );
     }
     else
     {
       int ltrpPoc = rRPL.calcLTRefPOC( getPOC(), getSPS()->getBitsForPOC(), ii );
 
-      pcRefPic           = xGetLongTermRefPic( rcListPic, ltrpPoc, rRPL.getDeltaPocMSBPresentFlag( ii ), m_pcPic->layerId );
-      pcRefPic->longTerm = true;
+      pcRefPic = xGetLongTermRefPic( rcListPic, ltrpPoc, rRPL.getDeltaPocMSBPresentFlag( ii ), m_pcPic->layerId );
+      longTerm = true;
     }
 
     m_apcRefPicList    [listId][ii] = pcRefPic;
-    m_bIsUsedAsLongTerm[listId][ii] = pcRefPic->longTerm;
+    m_bIsUsedAsLongTerm[listId][ii] = longTerm;
 
-    rRPL.setRefPicLongterm( ii,pcRefPic->longTerm );
+    rRPL.setRefPicLongterm( ii, longTerm );
   }
 }
 
@@ -812,15 +809,15 @@ void Slice::copySliceInfo(Slice *pSrc, bool cpyAlmostAll)
 
   m_cabacInitFlag                 = pSrc->m_cabacInitFlag;
   memcpy( m_alfApss,                 pSrc->m_alfApss,                 sizeof( m_alfApss ) );
-  memcpy( m_tileGroupAlfEnabledFlag, pSrc->m_tileGroupAlfEnabledFlag, sizeof(m_tileGroupAlfEnabledFlag));
-  m_tileGroupNumAps               = pSrc->m_tileGroupNumAps;
-  m_tileGroupLumaApsId            = pSrc->m_tileGroupLumaApsId;
-  m_tileGroupChromaApsId          = pSrc->m_tileGroupChromaApsId;
+  memcpy( m_alfEnabledFlag, pSrc->m_alfEnabledFlag, sizeof(m_alfEnabledFlag));
+  m_numAlfAps               = pSrc-> m_numAlfAps;
+  m_lumaAlfApsId            = pSrc-> m_lumaAlfApsId;
+  m_chromaAlfApsId          = pSrc-> m_chromaAlfApsId;
 
-  m_tileGroupCcAlfEnabledFlags[0]          = pSrc->m_tileGroupCcAlfEnabledFlags[0];
-  m_tileGroupCcAlfEnabledFlags[1]          = pSrc->m_tileGroupCcAlfEnabledFlags[1];
-  m_tileGroupCcAlfCbApsId                   = pSrc->m_tileGroupCcAlfCbApsId;
-  m_tileGroupCcAlfCrApsId                   = pSrc->m_tileGroupCcAlfCrApsId;
+  m_ccAlfEnabledFlags[0]          = pSrc->m_ccAlfEnabledFlags[0];
+  m_ccAlfEnabledFlags[1]          = pSrc->m_ccAlfEnabledFlags[1];
+  m_ccAlfCbApsId                  = pSrc->m_ccAlfCbApsId;
+  m_ccAlfCrApsId                  = pSrc->m_ccAlfCrApsId;
 }
 
 void Slice::checkLeadingPictureRestrictions( const PicListRange & rcListPic ) const
@@ -866,7 +863,7 @@ void Slice::checkLeadingPictureRestrictions( const PicListRange & rcListPic ) co
   // loop through all pictures in the reference picture buffer
   for( auto & pcPic: rcListPic )
   {
-    if( !pcPic->reconstructed || pcPic->wasLost )
+    if( pcPic->progress < Picture::reconstructed || pcPic->wasLost )
     {
       continue;
     }
@@ -1067,7 +1064,7 @@ void  Slice::initWpAcDcParam()
 void  Slice::getWpScaling( RefPicList e, int iRefIdx, WPScalingParam *&wp ) const
 {
   CHECK(e>=NUM_REF_PIC_LIST_01, "Invalid picture reference list");
-  wp = (WPScalingParam*) m_weightPredTable[e][iRefIdx];
+  wp = (iRefIdx>=0) ?  (WPScalingParam*) m_weightPredTable[e][iRefIdx] : (WPScalingParam*) m_weightPredTable[e][0]; // iRefIdx can be -1
 }
 
 //! reset Default WP tables settings : no weight.
@@ -1667,8 +1664,6 @@ void PPS::checkSliceMap()
 
 void PPS::finalizePPSPartitioning( const SPS* pcSPS )
 {
-  if( m_partitioningInitialized ) return;
-
   // initialize tile/slice info for no partitioning case
   if( getNoPicPartitionFlag() )
   {
@@ -1698,8 +1693,6 @@ void PPS::finalizePPSPartitioning( const SPS* pcSPS )
   }
 
   initSubPic( *pcSPS );
-
-  m_partitioningInitialized = true;
 }
 
 
@@ -1972,9 +1965,6 @@ void Slice::scaleRefPicList( PicHeader *picHeader )
   const PPS* pps = getPPS();
 
   bool refPicIsSameRes = false;
-   
-  // this is needed for IBC
-  m_pcPic->unscaledPic = m_pcPic;
 
   if( m_eSliceType == I_SLICE )
   {
@@ -2002,58 +1992,14 @@ void Slice::scaleRefPicList( PicHeader *picHeader )
       {
         refPicIsSameRes = true;
       }
-
-      m_scaledRefPicList[refList][rIdx] = m_apcRefPicList[refList][rIdx];
-    }
-  }
-
-  // make the scaled reference picture list as the default reference picture list
-  for( int refList = 0; refList < NUM_REF_PIC_LIST_01; refList++ )
-  {
-    if( refList == 1 && m_eSliceType != B_SLICE )
-    {
-      continue;
-    }
-
-    for( int rIdx = 0; rIdx < m_aiNumRefIdx[refList]; rIdx++ )
-    {
-      m_savedRefPicList[refList][rIdx] = m_apcRefPicList[refList][rIdx];
-      m_apcRefPicList[refList][rIdx] = m_scaledRefPicList[refList][rIdx];
-
-      // allow the access of the unscaled version in xPredInterBlk()
-      m_apcRefPicList[refList][rIdx]->unscaledPic = m_savedRefPicList[refList][rIdx];
     }
   }
   
   //Make sure that TMVP is disabled when there are no reference pictures with the same resolution
-  if(!refPicIsSameRes)
+  if( !refPicIsSameRes )
   {
-    CHECK(getPicHeader()->getEnableTMVPFlag() != 0, "TMVP cannot be enabled in pictures that have no reference pictures with the same resolution")
+    CHECK( getPicHeader()->getEnableTMVPFlag() != 0, "TMVP cannot be enabled in pictures that have no reference pictures with the same resolution" )
   }
-}
-
-bool Slice::checkRPR()
-{
-  const PPS* pps = getPPS();
-
-  for( int refList = 0; refList < NUM_REF_PIC_LIST_01; refList++ )
-  {
-
-    if( refList == 1 && m_eSliceType != B_SLICE )
-    {
-      continue;
-    }
-
-    for( int rIdx = 0; rIdx < m_aiNumRefIdx[refList]; rIdx++ )
-    {
-      if( m_scaledRefPicList[refList][rIdx]->cs->pcv->lumaWidth != pps->getPicWidthInLumaSamples() || m_scaledRefPicList[refList][rIdx]->cs->pcv->lumaHeight != pps->getPicHeightInLumaSamples() )
-      {
-        return true;
-      }
-    }
-  }
-
-  return false;
 }
 
 bool             operator == (const ConstraintInfo& op1, const ConstraintInfo& op2)

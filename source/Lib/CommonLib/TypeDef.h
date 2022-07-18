@@ -1,45 +1,41 @@
 /* -----------------------------------------------------------------------------
-The copyright in this software is being made available under the BSD
+The copyright in this software is being made available under the Clear BSD
 License, included below. No patent rights, trademark rights and/or 
 other Intellectual Property Rights other than the copyrights concerning 
 the Software are granted under this license.
 
-For any license concerning other Intellectual Property rights than the software, 
-especially patent licenses, a separate Agreement needs to be closed. 
-For more information please contact:
+The Clear BSD License
 
-Fraunhofer Heinrich Hertz Institute
-Einsteinufer 37
-10587 Berlin, Germany
-www.hhi.fraunhofer.de/vvc
-vvc@hhi.fraunhofer.de
-
-Copyright (c) 2018-2022, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. 
+Copyright (c) 2018-2022, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVdeC Authors.
 All rights reserved.
 
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met:
+Redistribution and use in source and binary forms, with or without modification,
+are permitted (subject to the limitations in the disclaimer below) provided that
+the following conditions are met:
 
- * Redistributions of source code must retain the above copyright notice,
-   this list of conditions and the following disclaimer.
- * Redistributions in binary form must reproduce the above copyright notice,
-   this list of conditions and the following disclaimer in the documentation
-   and/or other materials provided with the distribution.
- * Neither the name of Fraunhofer nor the names of its contributors may
-   be used to endorse or promote products derived from this software without
-   specific prior written permission.
+     * Redistributions of source code must retain the above copyright notice,
+     this list of conditions and the following disclaimer.
 
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS
-BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
-THE POSSIBILITY OF SUCH DAMAGE.
+     * Redistributions in binary form must reproduce the above copyright
+     notice, this list of conditions and the following disclaimer in the
+     documentation and/or other materials provided with the distribution.
+
+     * Neither the name of the copyright holder nor the names of its
+     contributors may be used to endorse or promote products derived from this
+     software without specific prior written permission.
+
+NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY
+THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
+CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
+CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
+BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
+IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGE.
 
 
 ------------------------------------------------------------------------------------------- */
@@ -74,6 +70,8 @@ namespace vvdec
 #define RECO_WHILE_PARSE                                  1
 #define ALLOW_MIDER_LF_DURING_PICEXT                      1
 
+#define MAX_OUT_OF_ORDER_PICS                             3 // maximum number of pictures, that are reconstructed out of order
+
 #define JVET_O1170_CHECK_BV_AT_DECODER                    0 // For decoder to check if a BV is valid or not
 
 #define DISABLE_CONFROMANCE_CHECK                         1
@@ -87,6 +85,8 @@ namespace vvdec
 #define ALF_FIX                                           1
 
 #define TBC                                               0
+
+#define ALF_PRE_TRANSPOSE                                 1
 
 #define JVET_R0270                                        TBC // JVET-S0270: Treating picture with mixed RASL and RADL slices as RASL picture
 #define JVET_S0155_EOS_NALU_CHECK                         TBC // JVET-S0155: Constraints on EOS NAL units
@@ -205,7 +205,7 @@ typedef       int16_t         TFilterCoeff;      ///< filter coefficient
 typedef       int             Intermediate_Int;  ///< used as intermediate value in calculations
 #endif
 
-typedef       uint64_t        Distortion;        ///< distortion measurement
+typedef       uint32_t        Distortion;        ///< distortion measurement
 
 typedef       uint16_t        SplitSeries;       ///< used to encoded the splits that caused a particular CU size
 
@@ -768,9 +768,15 @@ public:
 # define __PRETTY_FUNCTION__ __FUNCSIG__
 #endif
 
+#if !NDEBUG  // for non MSVC compiler, define _DEBUG if in debug mode to have same behavior between MSVC and others in debug
+#ifndef _DEBUG
+#define _DEBUG 1
+#endif
+#endif
+
 // if a check fails with THROW or CHECK, please check if ported correctly from assert in revision 1196)
 #define THROW(x)               throw( Exception( "\nERROR: In function \"" ) << __PRETTY_FUNCTION__ << "\" in " << __FILE__ << ":" << __LINE__ << ": " << x )
-//#define THROW(x)                { std::cerr << "\nERROR: In function \"" << __FUNCTION__ << "\" in " << __FILE__ << ":" << __LINE__ << ": " << x << std::endl; abort(); }
+#define ABORT(x)               { std::cerr << "\nERROR: In function \"" << __FUNCTION__ << "\" in " << __FILE__ << ":" << __LINE__ << ": " << x << std::endl; abort(); }
 #define THROW_RECOVERABLE(x)   throw( RecoverableException( "\nERROR: In function \"" ) << __PRETTY_FUNCTION__ << "\" in " << __FILE__ << ":" << __LINE__ << ": " << x )
 #define CHECK(c,x)             if(c){ THROW( x << "\nERROR CONDITION: " << #c ); }
 #define CHECK_RECOVERABLE(c,x) if(c){ THROW_RECOVERABLE( x << "\nERROR CONDITION: " << #c ); }
@@ -778,14 +784,8 @@ public:
 #define EXIT(x)                throw( Exception( "\n" ) << x << "\n" )
 #define CHECK_NULLPTR(_ptr)    CHECK( !( _ptr ), "Accessing an empty pointer!" )
 
-#if !NDEBUG  // for non MSVC compiler, define _DEBUG if in debug mode to have same behavior between MSVC and others in debug
-#ifndef _DEBUG
-#define _DEBUG 1
-#endif
-#endif
-
 #if defined( _DEBUG )
-#define CHECKD(c,x)         if(c){ THROW(x); }
+#define CHECKD(c,x)            if(c){ ABORT( x << "\nERROR CONDITION: " << #c ); }
 #else
 #define CHECKD(c,x)
 #endif   // _DEBUG
@@ -800,7 +800,7 @@ template<typename T, size_t N>
 class static_vector
 {
   T _arr[ N ];
-  size_t _size;
+  size_t _size = 0;
 
 public:
 
@@ -816,11 +816,20 @@ public:
 
   static const size_type max_num_elements = N;
 
-  static_vector() : _size( 0 )                                 { }
+  static_vector()                                        = default;
+  static_vector( const static_vector<T, N>& )            = default;
+  static_vector( static_vector<T, N>&& )                 = default;
+  static_vector& operator=( const static_vector<T, N>& ) = default;
+  static_vector& operator=( static_vector<T, N>&& )      = default;
+
   static_vector( size_t N_ ) : _size( N_ )                     { CHECKD( _size > N, "capacity exceeded" ); }
   static_vector( size_t N_, const T& _val ) : _size( 0 )       { resize( N_, _val ); }
   template<typename It>
   static_vector( It _it1, It _it2 ) : _size( 0 )               { while( _it1 < _it2 ) _arr[ _size++ ] = *_it1++; }
+  template<typename Iterable,
+           typename IS_ITERABLE = decltype( std::cbegin( std::declval<Iterable>() ), std::cend( std::declval<Iterable>() ) )>
+  explicit static_vector( const Iterable& iterable ) : _size( 0 ) { for( auto& e: iterable ) { push_back( e ); } }
+
   static_vector( std::initializer_list<T> _il ) : _size( 0 )
   {
     typename std::initializer_list<T>::iterator _src1 = _il.begin();
@@ -876,7 +885,7 @@ public:
   size_type       max_size() const              { return N; }
   size_type       byte_capacity() const         { return sizeof(_arr); }
 
-  void            erase( const_iterator _pos )  { iterator it   = const_cast<iterator>( _pos ) - 1;
+  void            erase( const_iterator _pos )  { iterator it   = begin() + ( _pos - 1 - begin() );
                                                   iterator last = end() - 1;
                                                   while( ++it != last ) *it = *( it + 1 );
                                                   _size--; }
@@ -923,13 +932,18 @@ struct AlfSliceParam
   bool             lumaCoeffSummed = false;
   bool             lumaFinalDone   = false;
   bool             chrmFinalDone   = false;
+#if ALF_PRE_TRANSPOSE
   short            lumaCoeffFinal     [MAX_NUM_ALF_TRANSPOSE_ID * MAX_NUM_ALF_CLASSES * MAX_NUM_ALF_LUMA_COEFF];
   short            lumaClippFinal     [MAX_NUM_ALF_TRANSPOSE_ID * MAX_NUM_ALF_CLASSES * MAX_NUM_ALF_LUMA_COEFF];
+#else
+  short            lumaCoeffFinal     [MAX_NUM_ALF_CLASSES * MAX_NUM_ALF_LUMA_COEFF];
+  short            lumaClippFinal     [MAX_NUM_ALF_CLASSES * MAX_NUM_ALF_LUMA_COEFF];
+#endif
   short            chrmClippFinal     [MAX_NUM_ALF_ALTERNATIVES_CHROMA * MAX_NUM_ALF_CHROMA_COEFF];
   int              tLayer;
   bool             newFilterFlag      [MAX_NUM_CHANNEL_TYPE];
 
-  std::mutex       recostructMutex;   // this must be the last member, so we can clear the rest of the struct using memset()
+  mutable std::mutex recostructMutex;   // this must be the last member, so we can clear the rest of the struct using memset()
 
   AlfSliceParam()
   {

@@ -10,7 +10,7 @@ if( NOT CMAKE_VERSION VERSION_LESS 3.12.0 )
 endif()
 
 # project name
-project( vvdec VERSION 1.3.0 )
+project( vvdec VERSION 1.5.0 )
 # set alternative version numbering for release candidates
 #set( PROJECT_VERSION_RC rc1 )
 if( PROJECT_VERSION_RC)
@@ -54,10 +54,10 @@ if( ${CMAKE_SYSTEM_NAME} STREQUAL "Emscripten" )
   add_link_options(
     --bind
     -sWASM_BIGINT
-    -sTOTAL_MEMORY=1000MB # this should be enough for FullHD decoding
-    -sINVOKE_RUN=0        # don't call main() automatically
+    -sINITIAL_MEMORY=1200MB # this should be enough for FullHD decoding
+    -sINVOKE_RUN=0          # don't call main() automatically
     -sUSE_PTHREADS
-    -sPROXY_TO_PTHREAD
+    #-sPROXY_TO_PTHREAD
     #-sPTHREAD_POOL_SIZE=20
     -sMINIFY_HTML=0
     -sMODULARIZE
@@ -114,6 +114,7 @@ if( CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR
 
   # enable address sanitizer
   set( VVDEC_USE_ADDRESS_SANITIZER          OFF CACHE BOOL   "Enable or disable address sanitizer" )
+  set( VVDEC_USE_THREAD_SANITIZER           OFF CACHE BOOL   "Enable or disable thread sanitizer" )
 
   # add -march=native
   set( VVDEC_OPT_TARGET_ARCH                ""  CACHE STRING "Enable or disable building with architecture specific optimization" )
@@ -135,6 +136,7 @@ if( VVDEC_ENABLE_BUILD_TYPE_POSTFIX )
   endif()
 endif()
 
+
 # set VVDEC_OUTPUT_DIR_POSTFIX
 if( BUILD_SHARED_LIBS )
   set( VVDEC_OUTPUT_DIR_POSTFIX shared )
@@ -142,21 +144,30 @@ else()
   set( VVDEC_OUTPUT_DIR_POSTFIX static )
 endif()
 
-# Using CMake's default library name convention which is the same for all configurations.
-set( CMAKE_ARCHIVE_OUTPUT_DIRECTORY_DEBUG          "${CMAKE_SOURCE_DIR}/lib/debug-${VVDEC_OUTPUT_DIR_POSTFIX}" )
-set( CMAKE_ARCHIVE_OUTPUT_DIRECTORY_RELEASE        "${CMAKE_SOURCE_DIR}/lib/release-${VVDEC_OUTPUT_DIR_POSTFIX}" )
-set( CMAKE_ARCHIVE_OUTPUT_DIRECTORY_RELWITHDEBINFO "${CMAKE_SOURCE_DIR}/lib/relwithdebinfo-${VVDEC_OUTPUT_DIR_POSTFIX}" )
-set( CMAKE_ARCHIVE_OUTPUT_DIRECTORY_MINSIZEREL     "${CMAKE_SOURCE_DIR}/lib/minsizerel-${VVDEC_OUTPUT_DIR_POSTFIX}" )
+set( VVDEC_TOPLEVEL_OUTPUT_DIRS              ON  CACHE BOOL   "Put build artifacts into ${CMAKE_SOURCE_DIR}/{bin,lib}/" )
 
-set( CMAKE_LIBRARY_OUTPUT_DIRECTORY_DEBUG          "${CMAKE_ARCHIVE_OUTPUT_DIRECTORY_DEBUG}" )
-set( CMAKE_LIBRARY_OUTPUT_DIRECTORY_RELEASE        "${CMAKE_ARCHIVE_OUTPUT_DIRECTORY_RELEASE}" )
-set( CMAKE_LIBRARY_OUTPUT_DIRECTORY_RELWITHDEBINFO "${CMAKE_ARCHIVE_OUTPUT_DIRECTORY_RELWITHDEBINFO}" )
-set( CMAKE_LIBRARY_OUTPUT_DIRECTORY_MINSIZEREL     "${CMAKE_ARCHIVE_OUTPUT_DIRECTORY_MINSIZEREL}" )
+if( VVDEC_TOPLEVEL_OUTPUT_DIRS )
+  # Using CMake's default library name convention which is the same for all configurations.
+  set( CMAKE_ARCHIVE_OUTPUT_DIRECTORY_DEBUG          "${CMAKE_SOURCE_DIR}/lib/debug-${VVDEC_OUTPUT_DIR_POSTFIX}" )
+  set( CMAKE_ARCHIVE_OUTPUT_DIRECTORY_RELEASE        "${CMAKE_SOURCE_DIR}/lib/release-${VVDEC_OUTPUT_DIR_POSTFIX}" )
+  set( CMAKE_ARCHIVE_OUTPUT_DIRECTORY_RELWITHDEBINFO "${CMAKE_SOURCE_DIR}/lib/relwithdebinfo-${VVDEC_OUTPUT_DIR_POSTFIX}" )
+  set( CMAKE_ARCHIVE_OUTPUT_DIRECTORY_MINSIZEREL     "${CMAKE_SOURCE_DIR}/lib/minsizerel-${VVDEC_OUTPUT_DIR_POSTFIX}" )
 
-set( CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG          "${CMAKE_SOURCE_DIR}/bin/debug-${VVDEC_OUTPUT_DIR_POSTFIX}" )
-set( CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE        "${CMAKE_SOURCE_DIR}/bin/release-${VVDEC_OUTPUT_DIR_POSTFIX}" )
-set( CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO "${CMAKE_SOURCE_DIR}/bin/relwithdebinfo-${VVDEC_OUTPUT_DIR_POSTFIX}" )
-set( CMAKE_RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL     "${CMAKE_SOURCE_DIR}/bin/minsizerel-${VVDEC_OUTPUT_DIR_POSTFIX}" )
+  set( CMAKE_LIBRARY_OUTPUT_DIRECTORY_DEBUG          "${CMAKE_ARCHIVE_OUTPUT_DIRECTORY_DEBUG}" )
+  set( CMAKE_LIBRARY_OUTPUT_DIRECTORY_RELEASE        "${CMAKE_ARCHIVE_OUTPUT_DIRECTORY_RELEASE}" )
+  set( CMAKE_LIBRARY_OUTPUT_DIRECTORY_RELWITHDEBINFO "${CMAKE_ARCHIVE_OUTPUT_DIRECTORY_RELWITHDEBINFO}" )
+  set( CMAKE_LIBRARY_OUTPUT_DIRECTORY_MINSIZEREL     "${CMAKE_ARCHIVE_OUTPUT_DIRECTORY_MINSIZEREL}" )
+
+  set( CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG          "${CMAKE_SOURCE_DIR}/bin/debug-${VVDEC_OUTPUT_DIR_POSTFIX}" )
+  set( CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE        "${CMAKE_SOURCE_DIR}/bin/release-${VVDEC_OUTPUT_DIR_POSTFIX}" )
+  set( CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO "${CMAKE_SOURCE_DIR}/bin/relwithdebinfo-${VVDEC_OUTPUT_DIR_POSTFIX}" )
+  set( CMAKE_RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL     "${CMAKE_SOURCE_DIR}/bin/minsizerel-${VVDEC_OUTPUT_DIR_POSTFIX}" )
+else()
+  # Put build artifacts below build-directory. (Don't need to add {debug,release,relwithdebinfo,minsizerel}-{static,shared}/)
+  set( CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib" )
+  set( CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib" )
+  set( CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin" )
+endif()
 
 # enable or disable Intel Vtune ITT Tracing
 #if( CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo" )
@@ -206,7 +217,20 @@ endif()
 if( VVDEC_USE_ADDRESS_SANITIZER )
   # add compile options
   add_compile_options( "-fsanitize=address" )
+  add_compile_options( "-fno-omit-frame-pointer" )
+  add_compile_options( "-fsanitize=undefined" )
+  add_compile_options( "-fsanitize=leak" )
   add_link_options( "-fsanitize=address" )
+  add_link_options( "-fno-omit-frame-pointer" )
+  add_link_options( "-fsanitize=undefined" )
+  add_link_options( "-fsanitize=leak" )
+endif()
+
+# set thread sanitizer compiler arguments
+if( VVDEC_USE_THREAD_SANITIZER )
+  # add compile options
+  add_compile_options( "-fsanitize=thread" )
+  add_link_options( "-fsanitize=thread" )
 endif()
 
 if( VVDEC_ENABLE_X86_SIMD )
@@ -217,9 +241,14 @@ if( VVDEC_ENABLE_X86_SIMD )
 endif()
 
 if( VVDEC_ENABLE_LINK_TIME_OPT )
-    set( CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON )
-    set( CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO ON )
-    set( CMAKE_INTERPROCEDURAL_OPTIMIZATION_MINSIZEREL ON )
+  set( CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE        ON )
+  set( CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO ON )
+  set( CMAKE_INTERPROCEDURAL_OPTIMIZATION_MINSIZEREL     ON )
+
+  if( CMAKE_CXX_COMPILER_ID STREQUAL "GNU" )
+    # enable parallel link-time optimization for GCC
+    add_link_options( $<$<CONFIG:Release,RelWithDebInfo,MinSizeRel>:-flto=auto> )
+  endif()
 endif()
 
 # use ccache
@@ -349,11 +378,9 @@ foreach( BITSTREAM IN LISTS BITSTREAM_FILES )
 
   if( EXISTS ${BITSTREAM_FILE} )
     read_bitstream_yuv_md5( ${BITSTREAM_FILE} RX_MD5_HASH )
-    add_test( NAME Test:${BITSTREAM_SHORT}.bit COMMAND ${VVDEC_TESTS_DEBUGGER_COMMAND} $<TARGET_FILE:vvdecapp> -b ${BITSTREAM_FILE} -md5 ${RX_MD5_HASH})
-    set_tests_properties( Test:${BITSTREAM_SHORT}.bit PROPERTIES TIMEOUT 120 )
+    add_test( NAME Test:${BITSTREAM_SHORT}.bit COMMAND ${VVDEC_TESTS_DEBUGGER_COMMAND} $<TARGET_FILE:vvdecapp> -b ${BITSTREAM_FILE} -md5 ${RX_MD5_HASH} )
   else()
     add_test( NAME MISSING:${BITSTREAM_SHORT}.bit COMMAND ${VVDEC_TESTS_DEBUGGER_COMMAND} $<TARGET_FILE:vvdecapp> -b ${BITSTREAM_FILE} -dph )
-    set_tests_properties( MISSING:${BITSTREAM_SHORT}.bit PROPERTIES TIMEOUT 120 )
 
     set( MISSING_BITSTREAM_FILES TRUE )
   endif()
@@ -366,14 +393,17 @@ foreach( BITSTREAM IN LISTS BITSTREAM_FAULTY_FILES )
   if( EXISTS ${BITSTREAM_FILE} )
     read_bitstream_yuv_md5( ${BITSTREAM_FILE} RX_MD5_HASH )
     add_test( NAME Faulty:${BITSTREAM_SHORT}.bit COMMAND ${VVDEC_TESTS_DEBUGGER_COMMAND} $<TARGET_FILE:vvdecapp> -b ${BITSTREAM_FILE} -dph -md5 ${RX_MD5_HASH} )
-    set_tests_properties( Faulty:${BITSTREAM_SHORT}.bit PROPERTIES TIMEOUT 120 )
   else()
     add_test( NAME MISSING:${BITSTREAM_SHORT}.bit COMMAND ${VVDEC_TESTS_DEBUGGER_COMMAND} $<TARGET_FILE:vvdecapp> -b ${BITSTREAM_FILE} -dph )
-    set_tests_properties( MISSING:${BITSTREAM_SHORT}.bit PROPERTIES TIMEOUT 120 )
 
     set( MISSING_BITSTREAM_FILES TRUE )
   endif()
 endforeach()
+
+get_directory_property( ALL_TESTS TESTS )
+set_tests_properties( ${ALL_TESTS} PROPERTIES
+                      TIMEOUT 120
+                      FAIL_REGULAR_EXPRESSION "WARNING:" )
 
 add_custom_target( test-ok  USES_TERMINAL COMMAND ${CMAKE_CTEST_COMMAND} -C $<CONFIG> -R "\"^(Test|MISSING)\"" )
 add_custom_target( test-all USES_TERMINAL COMMAND ${CMAKE_CTEST_COMMAND} -C $<CONFIG> -R "\"^(Test|MISSING|Faulty)\"" )

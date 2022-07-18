@@ -1,45 +1,41 @@
 /* -----------------------------------------------------------------------------
-The copyright in this software is being made available under the BSD
+The copyright in this software is being made available under the Clear BSD
 License, included below. No patent rights, trademark rights and/or 
 other Intellectual Property Rights other than the copyrights concerning 
 the Software are granted under this license.
 
-For any license concerning other Intellectual Property rights than the software, 
-especially patent licenses, a separate Agreement needs to be closed. 
-For more information please contact:
+The Clear BSD License
 
-Fraunhofer Heinrich Hertz Institute
-Einsteinufer 37
-10587 Berlin, Germany
-www.hhi.fraunhofer.de/vvc
-vvc@hhi.fraunhofer.de
-
-Copyright (c) 2018-2022, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. 
+Copyright (c) 2018-2022, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVdeC Authors.
 All rights reserved.
 
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met:
+Redistribution and use in source and binary forms, with or without modification,
+are permitted (subject to the limitations in the disclaimer below) provided that
+the following conditions are met:
 
- * Redistributions of source code must retain the above copyright notice,
-   this list of conditions and the following disclaimer.
- * Redistributions in binary form must reproduce the above copyright notice,
-   this list of conditions and the following disclaimer in the documentation
-   and/or other materials provided with the distribution.
- * Neither the name of Fraunhofer nor the names of its contributors may
-   be used to endorse or promote products derived from this software without
-   specific prior written permission.
+     * Redistributions of source code must retain the above copyright notice,
+     this list of conditions and the following disclaimer.
 
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS
-BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
-THE POSSIBILITY OF SUCH DAMAGE.
+     * Redistributions in binary form must reproduce the above copyright
+     notice, this list of conditions and the following disclaimer in the
+     documentation and/or other materials provided with the distribution.
+
+     * Neither the name of the copyright holder nor the names of its
+     contributors may be used to endorse or promote products derived from this
+     software without specific prior written permission.
+
+NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY
+THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
+CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
+CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
+BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
+IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGE.
 
 
 ------------------------------------------------------------------------------------------- */
@@ -129,8 +125,8 @@ void DecLibParser::destroy()
 void DecLibParser::recreateLostPicture( Picture* pcPic )
 {
   auto closestPic = m_picListManager.findClosestPic( pcPic->poc );
-  CHECK( !closestPic,                "found no Picture to replace lost Picture" );
-  CHECK( !closestPic->reconstructed, "closest Picture is not yet reconstructed" )
+  CHECK( !closestPic,                                   "found no Picture to replace lost Picture" );
+  CHECK( closestPic->progress < Picture::reconstructed, "closest Picture is not yet reconstructed" )
   if( closestPic )
   {
     // the next not-lost picture in the parseFrameList should be the one, that referenced this picture
@@ -150,7 +146,7 @@ void DecLibParser::recreateLostPicture( Picture* pcPic )
     pcPic->slices[0]->copySliceInfo( closestPic->slices[0] );
     pcPic->slices[0]->setPOC( pcPic->poc );
 
-    pcPic->reconstructed = true;
+    pcPic->progress = Picture::reconstructed;
 
     pcPic->parseDone.unlock();
     pcPic->done.unlock();
@@ -337,34 +333,37 @@ Picture* DecLibParser::getNextDecodablePicture()
     return pic;
   }
 
+  if( m_parseFrameList.front()->skippedDecCount >= MAX_OUT_OF_ORDER_PICS )
+  {
+    Picture* pic = m_parseFrameList.front();
+    m_parseFrameList.pop_front();
+    return pic;
+  }
+
   // try to find next picture, that is parsed and has all reference pictures decoded
   for( auto picIt = m_parseFrameList.begin(); picIt != m_parseFrameList.end(); ++picIt )
   {
     Picture* pic = *picIt;
 
-    // allow skipping the next pic in coding order m_maxPicReconSkip times
-    if( pic->skippedDecCount >= m_maxPicReconSkip )
-      break;
-
     if( pic->parseDone.isBlocked() )
       continue;
 
     bool allRefPicsDone = true;
-    const CodingStructure& cs = *pic->cs;
-    if( std::any_of( cs.picture->slices.begin(), cs.picture->slices.end(), []( const Slice* pcSlice ) { return !pcSlice->isIntra(); } ) )
+    for( const Slice* slice: pic->slices )
     {
+      if( slice->isIntra() )
+      {
+        continue;
+      }
       for( int iDir = REF_PIC_LIST_0; iDir < NUM_REF_PIC_LIST_01 && allRefPicsDone; ++iDir )
       {
-        for( const Slice* slice : cs.picture->slices )
+        for( int iRefIdx = 0; iRefIdx < slice->getNumRefIdx( (RefPicList) iDir ) && allRefPicsDone; iRefIdx++ )
         {
-          for( int iRefIdx = 0; iRefIdx < slice->getNumRefIdx( ( RefPicList ) iDir ) && allRefPicsDone; iRefIdx++ )
+          const Picture* refPic = slice->getRefPic( (RefPicList) iDir, iRefIdx );
+          if( refPic->done.isBlocked() )
           {
-            const Picture* refPic = slice->getRefPic( ( RefPicList ) iDir, iRefIdx );
-            if( refPic->done.isBlocked() )
-            {
-              allRefPicsDone = false;
-              break;
-            }
+            allRefPicsDone = false;
+            break;
           }
         }
       }
@@ -372,20 +371,20 @@ Picture* DecLibParser::getNextDecodablePicture()
 
     if( allRefPicsDone )
     {
-      if( picIt != m_parseFrameList.begin() )
+      // increase skip count for all previous pictures
+      for( auto& skipped: PicListRange{ m_parseFrameList.begin(), picIt } )
       {
-        // count how often the next pic in coding order has been skipped
-        m_parseFrameList.front()->skippedDecCount++;
+        skipped->skippedDecCount++;
       }
 
       m_parseFrameList.erase( picIt );
       return pic;
     }
 
-    if( pic->getTLayer() < m_parseFrameList.front()->getTLayer() )
-    {
-      break;
-    }
+//    if( pic->getTLayer() < m_parseFrameList.front()->getTLayer() )
+//    {
+//      break;
+//    }
   }
 
   // if no picture has all reference-pictures decoded, use next pic in (regular) decoding order.
@@ -465,11 +464,11 @@ DecLibParser::SliceHeadResult DecLibParser::xDecodeSliceHead( InputNALUnit& nalu
     m_HLSReader.parseSliceHeader( m_apcSlicePilot, m_picHeader.get(), &m_parameterSetManager, m_prevTid0POC, m_pcParsePic, m_bFirstSliceInPicture );
   }
   
-  PPS *pps = m_parameterSetManager.getPPS( m_apcSlicePilot->getPicHeader()->getPPSId() );
+  const PPS *pps = static_cast<const ParameterSetManager&>( m_parameterSetManager ).getPPS( m_apcSlicePilot->getPicHeader()->getPPSId() );
   CHECK( pps == 0, "No PPS present" );
-  SPS *sps = m_parameterSetManager.getSPS( pps->getSPSId() );
+  const SPS *sps = static_cast< const ParameterSetManager&>( m_parameterSetManager ).getSPS( pps->getSPSId() );
   CHECK( sps == 0, "No SPS present" );
-  VPS *vps = m_parameterSetManager.getVPS( sps->getVPSId() );
+  const VPS *vps = static_cast<const ParameterSetManager&>( m_parameterSetManager ).getVPS( sps->getVPSId() );
   CHECK( sps->getVPSId() > 0 && vps == 0, "Invalid VPS" );
   if( sps->getVPSId() == 0 && m_prevLayerID != MAX_INT )
   {
@@ -605,7 +604,7 @@ DecLibParser::SliceHeadResult DecLibParser::xDecodeSliceHead( InputNALUnit& nalu
   }
   if( sps->getVPSId() > 0 )
   {
-    VPS *vps = m_parameterSetManager.getVPS( sps->getVPSId() );
+    const VPS *vps = m_parameterSetManager.getVPS( sps->getVPSId() );
     CHECK( vps == 0, "No VPS present" );
     if( ( vps->getOlsModeIdc() == 0
           && vps->getGeneralLayerIdx( nalu.m_nuhLayerId ) < ( vps->getMaxLayers() - 1 )
@@ -651,11 +650,6 @@ DecLibParser::SliceHeadResult DecLibParser::xDecodeSliceHead( InputNALUnit& nalu
   }
 
   m_prevLayerID = nalu.m_nuhLayerId;
-
-  if( !pps->pcv )
-  {
-    pps->pcv = std::make_unique<PreCalcValues>( *sps, *pps );
-  }
 
   //detect lost reference picture and insert copy of earlier frame.
   for( const auto rplIdx: { REF_PIC_LIST_0, REF_PIC_LIST_1 } )
@@ -887,121 +881,121 @@ Slice*  DecLibParser::xDecodeSliceMain( InputNALUnit &nalu )
   pcSlice->scaleRefPicList( m_pcParsePic->cs->picHeader );
 
 
-    if (!pcSlice->isIntra())
-    {
-      const int iCurrPOC  = pcSlice->getPOC();
+  if (!pcSlice->isIntra())
+  {
+    const int iCurrPOC  = pcSlice->getPOC();
 
-      bool bLowDelay = true;
-      for( int iRefIdx = 0; iRefIdx < pcSlice->getNumRefIdx( REF_PIC_LIST_0 ) && bLowDelay; iRefIdx++ )
+    bool bLowDelay = true;
+    for( int iRefIdx = 0; iRefIdx < pcSlice->getNumRefIdx( REF_PIC_LIST_0 ) && bLowDelay; iRefIdx++ )
+    {
+      if( pcSlice->getRefPic( REF_PIC_LIST_0, iRefIdx )->getPOC() > iCurrPOC )
       {
-        if( pcSlice->getRefPic( REF_PIC_LIST_0, iRefIdx )->getPOC() > iCurrPOC )
+        bLowDelay = false;
+      }
+    }
+    if( pcSlice->isInterB() )
+    {
+      for( int iRefIdx = 0; iRefIdx < pcSlice->getNumRefIdx( REF_PIC_LIST_1 ) && bLowDelay; iRefIdx++ )
+      {
+        if( pcSlice->getRefPic( REF_PIC_LIST_1, iRefIdx )->getPOC() > iCurrPOC )
         {
           bLowDelay = false;
         }
       }
-      if( pcSlice->isInterB() )
-      {
-        for( int iRefIdx = 0; iRefIdx < pcSlice->getNumRefIdx( REF_PIC_LIST_1 ) && bLowDelay; iRefIdx++ )
-        {
-          if( pcSlice->getRefPic( REF_PIC_LIST_1, iRefIdx )->getPOC() > iCurrPOC )
-          {
-            bLowDelay = false;
-          }
-        }
-      }
-
-      pcSlice->setCheckLDC( bLowDelay );
     }
 
-    if( pcSlice->getSPS()->getUseSMVD() && !pcSlice->getCheckLDC() && !pcSlice->getPicHeader()->getMvdL1ZeroFlag() )
+    pcSlice->setCheckLDC( bLowDelay );
+  }
+
+  if( pcSlice->getSPS()->getUseSMVD() && !pcSlice->getCheckLDC() && !pcSlice->getPicHeader()->getMvdL1ZeroFlag() )
+  {
+    int currPOC = pcSlice->getPOC();
+
+    int forwardPOC = currPOC;
+    int backwardPOC = currPOC;
+    int ref = 0;
+    int refIdx0 = -1;
+    int refIdx1 = -1;
+
+    // search nearest forward POC in List 0
+    for ( ref = 0; ref < pcSlice->getNumRefIdx( REF_PIC_LIST_0 ); ref++ )
     {
-      int currPOC = pcSlice->getPOC();
+      int poc = pcSlice->getRefPic( REF_PIC_LIST_0, ref )->getPOC();
+      const bool isRefLongTerm = pcSlice->getIsUsedAsLongTerm( REF_PIC_LIST_0, ref );
+      if( poc < currPOC && ( poc > forwardPOC || refIdx0 == -1 ) && !isRefLongTerm )
+      {
+        forwardPOC = poc;
+        refIdx0 = ref;
+      }
+    }
 
-      int forwardPOC = currPOC;
-      int backwardPOC = currPOC;
-      int ref = 0;
-      int refIdx0 = -1;
-      int refIdx1 = -1;
+    // search nearest backward POC in List 1
+    for ( ref = 0; ref < pcSlice->getNumRefIdx( REF_PIC_LIST_1 ); ref++ )
+    {
+      int poc = pcSlice->getRefPic( REF_PIC_LIST_1, ref )->getPOC();
+      const bool isRefLongTerm = pcSlice->getIsUsedAsLongTerm( REF_PIC_LIST_1, ref );
+      if( poc > currPOC && ( poc < backwardPOC || refIdx1 == -1 ) && !isRefLongTerm )
+      {
+        backwardPOC = poc;
+        refIdx1 = ref;
+      }
+    }
 
-      // search nearest forward POC in List 0
+    if ( !(forwardPOC < currPOC && backwardPOC > currPOC) )
+    {
+      forwardPOC = currPOC;
+      backwardPOC = currPOC;
+      refIdx0 = -1;
+      refIdx1 = -1;
+
+      // search nearest backward POC in List 0
       for ( ref = 0; ref < pcSlice->getNumRefIdx( REF_PIC_LIST_0 ); ref++ )
       {
         int poc = pcSlice->getRefPic( REF_PIC_LIST_0, ref )->getPOC();
-        const bool isRefLongTerm = pcSlice->getRefPic( REF_PIC_LIST_0, ref )->longTerm;
-        if( poc < currPOC && ( poc > forwardPOC || refIdx0 == -1 ) && !isRefLongTerm )
+        const bool isRefLongTerm = pcSlice->getIsUsedAsLongTerm( REF_PIC_LIST_0, ref );
+        if( poc > currPOC && ( poc < backwardPOC || refIdx0 == -1 ) && !isRefLongTerm )
         {
-          forwardPOC = poc;
+          backwardPOC = poc;
           refIdx0 = ref;
         }
       }
 
-      // search nearest backward POC in List 1
+      // search nearest forward POC in List 1
       for ( ref = 0; ref < pcSlice->getNumRefIdx( REF_PIC_LIST_1 ); ref++ )
       {
         int poc = pcSlice->getRefPic( REF_PIC_LIST_1, ref )->getPOC();
-        const bool isRefLongTerm = pcSlice->getRefPic( REF_PIC_LIST_1, ref )->longTerm;
-        if( poc > currPOC && ( poc < backwardPOC || refIdx1 == -1 ) && !isRefLongTerm )
+        const bool isRefLongTerm = pcSlice->getIsUsedAsLongTerm( REF_PIC_LIST_1, ref );
+        if( poc < currPOC && ( poc > forwardPOC || refIdx1 == -1 ) && !isRefLongTerm )
         {
-          backwardPOC = poc;
+          forwardPOC = poc;
           refIdx1 = ref;
         }
       }
+    }
 
-      if ( !(forwardPOC < currPOC && backwardPOC > currPOC) )
-      {
-        forwardPOC = currPOC;
-        backwardPOC = currPOC;
-        refIdx0 = -1;
-        refIdx1 = -1;
-
-        // search nearest backward POC in List 0
-        for ( ref = 0; ref < pcSlice->getNumRefIdx( REF_PIC_LIST_0 ); ref++ )
-        {
-          int poc = pcSlice->getRefPic( REF_PIC_LIST_0, ref )->getPOC();
-          const bool isRefLongTerm = pcSlice->getRefPic( REF_PIC_LIST_0, ref )->longTerm;
-          if( poc > currPOC && ( poc < backwardPOC || refIdx0 == -1 ) && !isRefLongTerm )
-          {
-            backwardPOC = poc;
-            refIdx0 = ref;
-          }
-        }
-
-        // search nearest forward POC in List 1
-        for ( ref = 0; ref < pcSlice->getNumRefIdx( REF_PIC_LIST_1 ); ref++ )
-        {
-          int poc = pcSlice->getRefPic( REF_PIC_LIST_1, ref )->getPOC();
-          const bool isRefLongTerm = pcSlice->getRefPic( REF_PIC_LIST_1, ref )->longTerm;
-          if( poc < currPOC && ( poc > forwardPOC || refIdx1 == -1 ) && !isRefLongTerm )
-          {
-            forwardPOC = poc;
-            refIdx1 = ref;
-          }
-        }
-      }
-
-      if ( forwardPOC < currPOC && backwardPOC > currPOC )
-      {
-        pcSlice->setBiDirPred( true, refIdx0, refIdx1 );
-      }
-      else
-      {
-        pcSlice->setBiDirPred( false, -1, -1 );
-      }
+    if ( forwardPOC < currPOC && backwardPOC > currPOC )
+    {
+      pcSlice->setBiDirPred( true, refIdx0, refIdx1 );
     }
     else
     {
       pcSlice->setBiDirPred( false, -1, -1 );
     }
+  }
+  else
+  {
+    pcSlice->setBiDirPred( false, -1, -1 );
+  }
 
-    //---------------
-    pcSlice->setRefPOCList();
-    NalUnitInfo naluInfo;
-    naluInfo.m_nalUnitType = nalu.m_nalUnitType;
-    naluInfo.m_nuhLayerId = nalu.m_nuhLayerId;
-    naluInfo.m_firstCTUinSlice = pcSlice->getFirstCtuRsAddrInSlice();
-    naluInfo.m_POC = pcSlice->getPOC();
-    xCheckMixedNalUnit( pcSlice, nalu );
-    m_nalUnitInfo[naluInfo.m_nuhLayerId].push_back( naluInfo );
+  //---------------
+  pcSlice->setRefPOCList();
+  NalUnitInfo naluInfo;
+  naluInfo.m_nalUnitType = nalu.m_nalUnitType;
+  naluInfo.m_nuhLayerId = nalu.m_nuhLayerId;
+  naluInfo.m_firstCTUinSlice = pcSlice->getFirstCtuRsAddrInSlice();
+  naluInfo.m_POC = pcSlice->getPOC();
+  xCheckMixedNalUnit( pcSlice, nalu );
+  m_nalUnitInfo[naluInfo.m_nuhLayerId].push_back( naluInfo );
 
   if( m_bFirstSliceInPicture )
   {
@@ -1082,14 +1076,16 @@ Picture * DecLibParser::xActivateParameterSets( const int layerId )
 {
   Picture * pcPic = nullptr;
 
+  ParameterSetManager::ActivePSs paramSets;
+
   if( m_bFirstSliceInPicture )
   {
-    auto paramSets = m_parameterSetManager.xActivateParameterSets( m_apcSlicePilot, m_picHeader.get() );
+              paramSets = m_parameterSetManager.xActivateParameterSets( m_bFirstSliceInPicture, m_apcSlicePilot, m_picHeader.get() );
     const SPS*  sps     = paramSets.sps;
     const PPS*  pps     = paramSets.pps;
-          APS** alfApss = paramSets.alfAPSs->data();
-          APS*  lmcsAPS = paramSets.lmcsAps;
-          APS*  scalingListAPS = paramSets.scalingListAps;
+    const APS** alfApss = paramSets.alfAPSs->data();
+    const APS*  lmcsAPS = paramSets.lmcsAps;
+    const APS*  scalingListAPS = paramSets.scalingListAps;
 
     xParsePrefixSEImessages();
 
@@ -1147,6 +1143,16 @@ Picture * DecLibParser::xActivateParameterSets( const int layerId )
     pSlice->setPicHeader( m_picHeader.get() );
     m_picHeader = std::make_shared<PicHeader>();
   }
+  else
+  {
+    paramSets = m_parameterSetManager.xActivateParameterSets( m_bFirstSliceInPicture, pSlice, pcPic->picHeader.get() );
+    pSlice->setAlfApss( paramSets.alfAPSs->data() );
+
+    for( int i = 0; i < ALF_CTB_MAX_NUM_APS; ++i )
+    {
+      pcPic->cs->alfApss[i] = paramSets.alfAPSs->data()[i] ? paramSets.alfAPSs->data()[i]->getSharedPtr() : nullptr;
+    }
+  }
 
   const VPS*  vps     = pSlice->getVPS();
   const SPS*  sps     = pSlice->getSPS();
@@ -1154,7 +1160,7 @@ Picture * DecLibParser::xActivateParameterSets( const int layerId )
 
   if( !m_bFirstSliceInPicture )
   {
-    APS*  lmcsAPS = pSlice->getPicHeader()->getLmcsAPS().get();
+    const APS*  lmcsAPS = pSlice->getPicHeader()->getLmcsAPS().get();
 
     // check that the current active PPS has not changed...
     if( sps->getChangedFlag() )
@@ -1167,7 +1173,7 @@ Picture * DecLibParser::xActivateParameterSets( const int layerId )
     }
     for( int i = 0; i < ALF_CTB_MAX_NUM_APS; i++ )
     {
-      APS* aps = m_parameterSetManager.getAPS_nothrow( i, ALF_APS );
+      const APS* aps = m_parameterSetManager.getAPS_nothrow( i, ALF_APS );
       if( aps && aps->getChangedFlag() )
       {
         EXIT("Error - a new APS has been decoded while processing a picture");
@@ -1337,7 +1343,7 @@ Picture* DecLibParser::prepareLostPicture( int iLostPoc, const int layerId )
   msg( INFO, "inserting lost poc : %d\n", iLostPoc );
 
   Picture* cFillPic = m_picListManager.getNewPicBuffer( *m_parameterSetManager.getFirstSPS(), *m_parameterSetManager.getFirstPPS(), 0, layerId, m_parameterSetManager.getVPS( m_parameterSetManager.getFirstSPS()->getVPSId() ) );
-  cFillPic->finalInit( &m_cuChunkCache, &m_tuChunkCache, m_parameterSetManager.getFirstSPS(), m_parameterSetManager.getFirstPPS(), m_picHeader.get(), m_parameterSetManager.getAlfAPSs().data(), nullptr, nullptr, false ); //TODO: check this
+  cFillPic->finalInit( &m_cuChunkCache, &m_tuChunkCache, m_parameterSetManager.getFirstSPS(), m_parameterSetManager.getFirstPPS(), m_picHeader.get(), static_cast<const ParameterSetManager&>( m_parameterSetManager ).getAlfAPSs().data(), nullptr, nullptr, false ); //TODO: check this
   cFillPic->cs->allocTempInternals();
   cFillPic->cs->initStructData();
 
@@ -1385,6 +1391,7 @@ Picture* DecLibParser::prepareLostPicture( int iLostPoc, const int layerId )
   cFillPic->referenced      = true;
   cFillPic->neededForOutput = false;
   cFillPic->wasLost         = true;
+  cFillPic->progress        = Picture::parsed;
   cFillPic->poc             = iLostPoc;
   cFillPic->eNalUnitType    = naluType;
   cFillPic->rap             = isIRAP;
@@ -1402,7 +1409,7 @@ void DecLibParser::prepareUnavailablePicture( const PPS *pps, int iUnavailablePo
 {
   msg( INFO, "inserting unavailable poc : %d\n", iUnavailablePoc );
   Picture* cFillPic = m_picListManager.getNewPicBuffer( *m_parameterSetManager.getFirstSPS(), *m_parameterSetManager.getFirstPPS(), 0, layerId, m_parameterSetManager.getVPS( m_parameterSetManager.getFirstSPS()->getVPSId() ) );
-  APS* nullAlfApss[ALF_CTB_MAX_NUM_APS] = { nullptr, };
+  const APS* nullAlfApss[ALF_CTB_MAX_NUM_APS] = { nullptr, };
   cFillPic->finalInit( &m_cuChunkCache, &m_tuChunkCache, m_parameterSetManager.getFirstSPS(), m_parameterSetManager.getFirstPPS(), m_picHeader.get(), nullAlfApss, nullptr, nullptr, false ); //TODO: check this
   cFillPic->cs->allocTempInternals();
   cFillPic->cs->initStructData();
@@ -1426,7 +1433,7 @@ void DecLibParser::prepareUnavailablePicture( const PPS *pps, int iUnavailablePo
   {
     m_prevTid0POC = cFillPic->slices[0]->getPOC();
   }
-  cFillPic->reconstructed = true;
+  cFillPic->progress        = Picture::reconstructed;
   cFillPic->neededForOutput = false;
   // picture header is not derived for generated reference picture
   cFillPic->slices[0]->setPicHeader( nullptr );
@@ -1556,10 +1563,10 @@ void DecLibParser::checkNoOutputPriorPics()
     return;
   }
 
-  auto pcListPic = m_picListManager.getPicListRange( m_picListManager.getBackPic() );   // TODO: really front pic here? not back?
+  auto pcListPic = m_picListManager.getPicListRange( m_picListManager.getBackPic() );
   for( auto& pcPicTmp: pcListPic )
   {
-    if( pcPicTmp->reconstructed && pcPicTmp->getPOC() < m_lastPOCNoOutputPriorPics )
+    if( pcPicTmp->progress >= Picture::reconstructed && pcPicTmp->getPOC() < m_lastPOCNoOutputPriorPics )
     {
       pcPicTmp->neededForOutput = false;
     }

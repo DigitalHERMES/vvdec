@@ -1,45 +1,41 @@
 /* -----------------------------------------------------------------------------
-The copyright in this software is being made available under the BSD
-License, included below. No patent rights, trademark rights and/or
-other Intellectual Property Rights other than the copyrights concerning
+The copyright in this software is being made available under the Clear BSD
+License, included below. No patent rights, trademark rights and/or 
+other Intellectual Property Rights other than the copyrights concerning 
 the Software are granted under this license.
 
-For any license concerning other Intellectual Property rights than the software,
-especially patent licenses, a separate Agreement needs to be closed.
-For more information please contact:
+The Clear BSD License
 
-Fraunhofer Heinrich Hertz Institute
-Einsteinufer 37
-10587 Berlin, Germany
-www.hhi.fraunhofer.de/vvc
-vvc@hhi.fraunhofer.de
-
-Copyright (c) 2018-2022, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V.
+Copyright (c) 2018-2022, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVdeC Authors.
 All rights reserved.
 
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met:
+Redistribution and use in source and binary forms, with or without modification,
+are permitted (subject to the limitations in the disclaimer below) provided that
+the following conditions are met:
 
- * Redistributions of source code must retain the above copyright notice,
-   this list of conditions and the following disclaimer.
- * Redistributions in binary form must reproduce the above copyright notice,
-   this list of conditions and the following disclaimer in the documentation
-   and/or other materials provided with the distribution.
- * Neither the name of Fraunhofer nor the names of its contributors may
-   be used to endorse or promote products derived from this software without
-   specific prior written permission.
+     * Redistributions of source code must retain the above copyright notice,
+     this list of conditions and the following disclaimer.
 
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS
-BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
-THE POSSIBILITY OF SUCH DAMAGE.
+     * Redistributions in binary form must reproduce the above copyright
+     notice, this list of conditions and the following disclaimer in the
+     documentation and/or other materials provided with the distribution.
+
+     * Neither the name of the copyright holder nor the names of its
+     contributors may be used to endorse or promote products derived from this
+     software without specific prior written permission.
+
+NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY
+THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
+CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
+CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
+BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
+IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGE.
 
 
 ------------------------------------------------------------------------------------------- */
@@ -378,7 +374,7 @@ void DecLibRecon::decompressPicture( Picture* pcPic )
 {
   CodingStructure& cs = *pcPic->cs;
 
-  pcPic->inProgress = true;
+  pcPic->progress = Picture::reconstructing;
 
 #ifdef TRACE_ENABLE_ITT
   // mark start of frame
@@ -395,7 +391,7 @@ void DecLibRecon::decompressPicture( Picture* pcPic )
     if( sps->getUseReshaper() )
     {
       m_pcThreadResource[i]->m_cReshaper.createDec( sps->getBitDepth( CHANNEL_TYPE_LUMA ) );
-      m_pcThreadResource[i]->m_cReshaper.initSlice( pcPic->slices[0]->getNalUnitLayerId(), *pcPic->slices[0]->getPicHeader(), *pcPic->slices[0]->getVPS() );
+      m_pcThreadResource[i]->m_cReshaper.initSlice( pcPic->slices[0]->getNalUnitLayerId(), *pcPic->slices[0]->getPicHeader(), pcPic->slices[0]->getVPS() );
     }
 
     m_pcThreadResource[i]->m_cIntraPred.init( sps->getChromaFormatIdc(), sps->getBitDepth( CHANNEL_TYPE_LUMA ) );
@@ -427,8 +423,13 @@ void DecLibRecon::decompressPicture( Picture* pcPic )
     m_cALF.create( cs.picHeader, sps, pps, m_numDecThreads, m_fltBuf );
   }
 
+  const PreCalcValues* pcv = cs.pcv;
+
   // set reconstruction buffers in CodingStructure
-  size_t predBufSize = pcPic->Y().area() + ( isChromaEnabled( pcPic->chromaFormat ) ? ( pcPic->Cb().area() + pcPic->Cr().area() ) : 0 );
+  const ptrdiff_t ctuSampleSizeL = pcv->maxCUHeight * pcv->maxCUWidth;
+  const ptrdiff_t ctuSampleSizeC = isChromaEnabled( pcv->chrFormat ) ? ( ctuSampleSizeL >> ( getChannelTypeScaleX( CH_C, pcv->chrFormat ) + getChannelTypeScaleY( CH_C, pcv->chrFormat ) ) ) : 0;
+  const ptrdiff_t ctuSampleSize  = ctuSampleSizeL + 2 * ctuSampleSizeC;
+  const size_t    predBufSize    = ctuSampleSize * pcv->sizeInCtus;
   if( predBufSize != m_predBufSize )
   {
     m_predBuf.reset( ( Pel* ) xMalloc( Pel, predBufSize ) );
@@ -438,7 +439,7 @@ void DecLibRecon::decompressPicture( Picture* pcPic )
   pcPic->cs->m_predBuf = m_predBuf.get();
 
   // for the worst case of all PUs being 8x8 and using DMVR
-  const size_t _maxNumDmvrMvs = ( pcPic->lwidth() >> 3 ) * ( pcPic->lheight() >> 3 );
+  const size_t _maxNumDmvrMvs = pcv->num8x8CtuBlks * pcv->sizeInCtus;
   if( _maxNumDmvrMvs != m_dmvrMvCacheSize )
   {
     if( m_dmvrMvCache ) free( m_dmvrMvCache );
@@ -584,18 +585,19 @@ void DecLibRecon::decompressPicture( Picture* pcPic )
       if( line < heightInCtus && col < numTasksPerLine )
       {
         CBarrierVec ctuBarriesrs = picBarriers;
+        const int   ctuStart     = col * numColPerTask;
+        const int   ctuEnd       = std::min( ctuStart + numColPerTask, widthInCtus );
 
 #if RECO_WHILE_PARSE
-        const int ctuStart = col * numColPerTask;
-        const int ctuEnd   = std::min( ctuStart + numColPerTask, widthInCtus );
-        for( int ctu = ctuStart; ctu < ctuEnd; ctu++ )
-        {
-          ctuBarriesrs.push_back( &pcPic->ctuParsedBarrier[line * widthInCtus + ctu] );
-        }
+        // wait for the last CTU in the current line to be parsed
+        ctuBarriesrs.push_back( &pcPic->ctuParsedBarrier[( line + 1 ) * widthInCtus - 1] );
+
 #endif
-        CtuTaskParam* param = &tasksCtu[line * numTasksPerLine + col];
-        param->line         = line;
-        param->col          = col;
+        CtuTaskParam* param    = &tasksCtu[line * numTasksPerLine + col];
+        param->taskLine        = line;
+        param->taskCol         = col;
+        param->ctuEnd          = ctuEnd;
+        param->ctuStart        = ctuStart;
         param->numColPerTask   = numColPerTask;
         param->numTasksPerLine = numTasksPerLine;
 
@@ -609,29 +611,6 @@ void DecLibRecon::decompressPicture( Picture* pcPic )
     }
   }
 
-  {
-    static auto finishPicTask = []( int, FinishPicTaskParam* param )
-    {
-      CodingStructure& cs = *param->pic->cs;
-      if( cs.sps->getUseALF() && !AdaptiveLoopFilter::getAlfSkipPic( cs ) )
-      {
-        param->decLib->swapBufs( cs );
-      }
-
-      param->pic->reconstructed = true;
-#ifdef TRACE_ENABLE_ITT
-      // mark end of frame
-      __itt_frame_end_v3( picture->m_itt_decLibInst, nullptr );
-#endif
-      param->pic->stopProcessingTimer();
-
-      return true;
-    };
-
-    taskFinishPic = FinishPicTaskParam( this, pcPic );
-    m_decodeThreadPool->addBarrierTask<FinishPicTaskParam>( finishPicTask, &taskFinishPic, nullptr, &pcPic->done, { pcPic->m_ctuTaskCounter.donePtr() } );
-  }
-
   if( pcPic->referenced )
   {
     static auto task = []( int tid, LineTaskParam* param )
@@ -640,7 +619,7 @@ void DecLibRecon::decompressPicture( Picture* pcPic )
       auto& cs = *param->common.cs;
       for( int col = 0; col < cs.pcv->widthInCtus; col++ )
       {
-        param->common.decLib.m_pcThreadResource[tid]->m_cCuDecoder.TaskFinishMotionInfo( cs, col, param->line );
+        param->common.decLib.m_pcThreadResource[tid]->m_cCuDecoder.TaskFinishMotionInfo( cs, col + param->line * cs.pcv->widthInCtus, col, param->line );
       }
       ITT_TASKEND( itt_domain_dec, itt_handle_dmvr );
       return true;
@@ -664,14 +643,31 @@ void DecLibRecon::decompressPicture( Picture* pcPic )
     }
   }
 
-  static auto clearDataTask = []( int tid, Picture* pcPic )
   {
-    auto& cs = *pcPic->cs;
-    cs.deallocTempInternals();
-    return true;
-  };
+    static auto finishPicTask = []( int, FinishPicTaskParam* param )
+    {
+      CodingStructure& cs = *param->pic->cs;
 
-  m_decodeThreadPool->addBarrierTask<Picture>( clearDataTask, pcPic, nullptr, nullptr, { pcPic->m_ctuTaskCounter.donePtr(), pcPic->m_motionTaskCounter.donePtr() } );
+      if( cs.sps->getUseALF() && !AdaptiveLoopFilter::getAlfSkipPic( cs ) )
+      {
+        param->decLib->swapBufs( cs );
+      }
+
+      cs.deallocTempInternals();
+
+      param->pic->progress = Picture::reconstructed;
+#ifdef TRACE_ENABLE_ITT
+      // mark end of frame
+      __itt_frame_end_v3( picture->m_itt_decLibInst, nullptr );
+#endif
+      param->pic->stopProcessingTimer();
+
+      return true;
+    };
+
+    taskFinishPic = FinishPicTaskParam( this, pcPic );
+    m_decodeThreadPool->addBarrierTask<FinishPicTaskParam>( finishPicTask, &taskFinishPic, nullptr, &pcPic->done, { pcPic->m_motionTaskCounter.donePtr(), pcPic->m_ctuTaskCounter.donePtr() } );
+  }
 
   if( m_decodeThreadPool->numThreads() == 0 )
   {
@@ -699,28 +695,28 @@ Picture* DecLibRecon::waitForPrevDecompressedPic()
   m_currDecompPic->done.wait();
   ITT_TASKEND( itt_domain_dec, itt_handle_waitTasks );
 
-  m_currDecompPic->inProgress = false;
   return std::exchange( m_currDecompPic, nullptr );
 }
 
 template<bool onlyCheckReadyState>
 bool DecLibRecon::ctuTask( int tid, CtuTaskParam* param )
 {
-  const int       col          = param->col;
-  const int       line         = param->line;
+  const int       taskCol      = param->taskCol;
+  const int       line         = param->taskLine;
+  const int       col          = taskCol;
 
   auto&           cs           = *param->common.cs;
   auto&           decLib       = param->common.decLib;
-  const int       widthInCtus  = param->numTasksPerLine;
+  const int       tasksPerLine = param->numTasksPerLine;
   const int       heightInCtus = cs.pcv->heightInCtus;
 
-  CtuState&       thisCtuState =  param->common.ctuStates[line * widthInCtus + col];
-  const CtuState* thisLine     = &param->common.ctuStates[line * widthInCtus];
-  const CtuState* lineAbove    = thisLine - widthInCtus;
-  const CtuState* lineBelow    = thisLine + widthInCtus;
+  CtuState&       thisCtuState =  param->common.ctuStates[line * tasksPerLine + taskCol];
+  const CtuState* thisLine     = &param->common.ctuStates[line * tasksPerLine];
+  const CtuState* lineAbove    = thisLine - tasksPerLine;
+  const CtuState* lineBelow    = thisLine + tasksPerLine;
 
-  const int       ctuStart     = col * param->numColPerTask;
-  const int       ctuEnd       = std::min<int>( ctuStart + param->numColPerTask, cs.pcv->widthInCtus );
+  const int       ctuStart     = param->ctuStart;
+  const int       ctuEnd       = param->ctuEnd;
 
   try
   {
@@ -735,10 +731,21 @@ bool DecLibRecon::ctuTask( int tid, CtuTaskParam* param )
 
     case MIDER:
     {
-      if( col > 0 && thisLine[col - 1] <= MIDER )
+      if( col > 0 && thisLine[col - 1] <= MIDER_cont )
         return false;
-      if( line > 0 && lineAbove[std::min( col + 1, widthInCtus - 1 )] <= MIDER )
-        return false;
+      if( line > 0 )
+      {
+        if( col + 1 < tasksPerLine )
+        {
+          if( lineAbove[col + 1] <= MIDER )
+            return false;
+        }
+        else
+        {
+          if( lineAbove[col] <= MIDER_cont )
+            return false;
+        }
+      }
       if( onlyCheckReadyState )
         return true;
 
@@ -753,7 +760,7 @@ bool DecLibRecon::ctuTask( int tid, CtuTaskParam* param )
         if( !ctuData.slice->isIntra() || cs.sps->getIBCFlag() )
         {
           const UnitArea ctuArea = getCtuArea( cs, ctu, line, true );
-          decLib.m_pcThreadResource[tid]->m_cCuDecoder.TaskDeriveCtuMotionInfo( cs, ctuArea, param->common.perLineMiHist[line] );
+          decLib.m_pcThreadResource[tid]->m_cCuDecoder.TaskDeriveCtuMotionInfo( cs, ctuRsAddr, ctuArea, param->common.perLineMiHist[line] );
         }
         else
         {
@@ -761,8 +768,11 @@ bool DecLibRecon::ctuTask( int tid, CtuTaskParam* param )
           memset( ctuData.motion, 0, sizeof( MotionInfo ) * cs.pcv->num4x4CtuBlks );
           GCC_WARNING_RESET
         }
+
+        thisCtuState = MIDER_cont;
       }
-      thisCtuState = ( TaskType )( MIDER + 1 );
+
+      thisCtuState = LF_INIT;
 
       ITT_TASKEND( itt_domain_dec, itt_handle_mider );
     }
@@ -782,11 +792,10 @@ bool DecLibRecon::ctuTask( int tid, CtuTaskParam* param )
         ctuData.lfParam[1]  = &decLib.m_loopFilterParam[cs.pcv->num4x4CtuBlks * ( 2 * ctuRsAddr + 1 )];
         memset( ctuData.lfParam[0], 0, sizeof( LoopFilterParam ) * 2 * cs.pcv->num4x4CtuBlks );
 
-        const UnitArea  ctuArea  = getCtuArea( cs, ctu, line, true );
-        decLib.m_cLoopFilter.calcFilterStrengthsCTU( cs, ctuArea );
+        decLib.m_cLoopFilter.calcFilterStrengthsCTU( cs, ctuRsAddr );
       }
 
-      thisCtuState = ( TaskType )( LF_INIT + 1 );
+      thisCtuState = INTER;
 
       ITT_TASKEND( itt_domain_dec, itt_handle_lfcl );
     }
@@ -814,28 +823,40 @@ bool DecLibRecon::ctuTask( int tid, CtuTaskParam* param )
 
       for( int ctu = ctuStart; ctu < ctuEnd; ctu++ )
       {
-        const CtuData& ctuData = cs.getCtuData( ctu, line );
+        const int ctuRsAddr    = ctu + line * cs.pcv->widthInCtus;
         const UnitArea ctuArea = getCtuArea( cs, ctu, line, true );
+        const CtuData& ctuData = cs.getCtuData( ctuRsAddr );
 
-        decLib.m_pcThreadResource[tid]->m_cCuDecoder.TaskTrafoCtu( cs, ctuArea );
+        decLib.m_pcThreadResource[tid]->m_cCuDecoder.TaskTrafoCtu( cs, ctuRsAddr, ctuArea );
 
         if( !ctuData.slice->isIntra() )
         {
-          decLib.m_pcThreadResource[tid]->m_cCuDecoder.TaskInterCtu( cs, ctuArea );
+          decLib.m_pcThreadResource[tid]->m_cCuDecoder.TaskInterCtu( cs, ctuRsAddr, ctuArea );
         }
       }
 
-      thisCtuState = ( TaskType )( INTER + 1 );
+      thisCtuState = INTRA;
 
       ITT_TASKEND( itt_domain_dec, itt_handle_inter );
     }
 
     case INTRA:
     {
-      if( col > 0 && thisLine[col - 1] <= INTRA )
+      if( col > 0 && thisLine[col - 1] <= INTRA_cont )
         return false;
-      if( line > 0 && lineAbove[std::min( col + 1, widthInCtus - 1 )] <= INTRA )
-        return false;
+      if( line > 0 )
+      {
+        if( col + 1 < tasksPerLine )
+        {
+          if( lineAbove[col + 1] <= INTRA )
+            return false;
+        }
+        else
+        {
+          if( lineAbove[col] <= INTRA_cont )
+            return false;
+        }
+      }
       if( onlyCheckReadyState )
         return true;
 
@@ -843,11 +864,14 @@ bool DecLibRecon::ctuTask( int tid, CtuTaskParam* param )
 
       for( int ctu = ctuStart; ctu < ctuEnd; ctu++ )
       {
-        const UnitArea  ctuArea = getCtuArea( cs, ctu, line, true );
-        decLib.m_pcThreadResource[tid]->m_cCuDecoder.TaskCriticalIntraKernel( cs, ctuArea );
+        const int ctuRsAddr    = ctu + line * cs.pcv->widthInCtus;
+        const UnitArea ctuArea = getCtuArea( cs, ctu, line, true );
+        decLib.m_pcThreadResource[tid]->m_cCuDecoder.TaskCriticalIntraKernel( cs, ctuRsAddr, ctuArea );
+
+        thisCtuState = INTRA_cont;
       }
 
-      thisCtuState = ( TaskType )( INTRA + 1 );
+      thisCtuState = RSP;
 
       ITT_TASKEND( itt_domain_dec, itt_handle_intra );
     }
@@ -860,11 +884,11 @@ bool DecLibRecon::ctuTask( int tid, CtuTaskParam* param )
       // - Z can be reshaped when it is no more an intra prediction source for X in the next line
 
 
-      if     ( line + 1 < heightInCtus && col + 1 < widthInCtus && lineBelow[col + 1] < RSP )
+      if     ( line + 1 < heightInCtus && col + 1 < tasksPerLine && lineBelow[col + 1] < INTRA_cont )
         return false;
-      else if( line + 1 < heightInCtus &&                          lineBelow[col]     < RSP )
+      else if( line + 1 < heightInCtus &&                           lineBelow[col]     < RSP )
         return false;
-      else if(                            col + 1 < widthInCtus && thisLine [col + 1] < RSP ) // need this for the last line
+      else if(                            col + 1 < tasksPerLine && thisLine [col + 1] < INTRA_cont ) // need this for the last line
         return false;
 
       if( onlyCheckReadyState )
@@ -879,7 +903,7 @@ bool DecLibRecon::ctuTask( int tid, CtuTaskParam* param )
 
       ITT_TASKEND( itt_domain_dec, itt_handle_rsp );
 
-      thisCtuState = ( TaskType )( RSP + 1 );
+      thisCtuState = LF_V;
     }
 
     case LF_V:
@@ -894,9 +918,11 @@ bool DecLibRecon::ctuTask( int tid, CtuTaskParam* param )
       for( int ctu = ctuStart; ctu < ctuEnd; ctu++ )
       {
         decLib.m_cLoopFilter.loopFilterCTU( cs, MAX_NUM_CHANNEL_TYPE, ctu, line, 0, EDGE_VER );
+
+        thisCtuState = LF_V_cont;
       }
 
-      thisCtuState = ( TaskType )( LF_V + 1 );
+      thisCtuState = LF_H;
 
       ITT_TASKEND( itt_domain_dec, itt_handle_lfl );
     }
@@ -906,10 +932,10 @@ bool DecLibRecon::ctuTask( int tid, CtuTaskParam* param )
       if( line > 0 && lineAbove[col] < LF_H )
         return false;
 
-      if( line > 0 && col + 1 < widthInCtus && lineAbove[col + 1] < LF_H )
+      if( line > 0 && col + 1 < tasksPerLine && lineAbove[col + 1] < LF_V_cont )
         return false;
 
-      if( col + 1 < widthInCtus && thisLine[col + 1] < LF_H )
+      if(             col + 1 < tasksPerLine && thisLine[col + 1] < LF_V_cont )
         return false;
 
       if( onlyCheckReadyState )
@@ -922,7 +948,7 @@ bool DecLibRecon::ctuTask( int tid, CtuTaskParam* param )
         decLib.m_cLoopFilter.loopFilterCTU( cs, MAX_NUM_CHANNEL_TYPE, ctu, line, 0, EDGE_HOR );
       }
 
-      thisCtuState = ( TaskType )( LF_H + 1 );
+      thisCtuState = PRESAO;
 
       ITT_TASKEND( itt_domain_dec, itt_handle_lfl );
     }
@@ -930,12 +956,12 @@ bool DecLibRecon::ctuTask( int tid, CtuTaskParam* param )
     case PRESAO:
     {
       // only last CTU processes full line
-      if( col == widthInCtus - 1 )
+      if( col == tasksPerLine - 1 )
       {
         if( line > 0 && lineAbove[col] <= PRESAO )
           return false;
 
-        for( int c = 0; c < widthInCtus; ++c )
+        for( int c = 0; c < tasksPerLine; ++c )
         {
           if( thisLine[c] < PRESAO )
             return false;
@@ -956,14 +982,14 @@ bool DecLibRecon::ctuTask( int tid, CtuTaskParam* param )
 
         ITT_TASKEND( itt_domain_dec, itt_handle_presao );
       }
-      else if( thisLine[widthInCtus - 1] <= PRESAO )   // wait for last CTU to finish PRESAO
+      else if( thisLine[tasksPerLine - 1] <= PRESAO )   // wait for last CTU to finish PRESAO
       {
         return false;
       }
       if( onlyCheckReadyState )
         return true;
 
-      thisCtuState = ( TaskType )( PRESAO + 1 );
+      thisCtuState = SAO;
     }
 
     case SAO:
@@ -991,12 +1017,14 @@ bool DecLibRecon::ctuTask( int tid, CtuTaskParam* param )
         for( int ctu = ctuStart; ctu < ctuEnd; ctu++ )
         {
           AdaptiveLoopFilter::prepareCTU( cs, ctu, line );
+
+          thisCtuState = SAO_cont;
         }
 
         ITT_TASKEND( itt_domain_dec, itt_handle_alf );
       }
 
-      thisCtuState = ( TaskType )( SAO + 1 );
+      thisCtuState = ALF;
     }
 
     case ALF:
@@ -1006,24 +1034,24 @@ bool DecLibRecon::ctuTask( int tid, CtuTaskParam* param )
         const bool a = line > 0;
         const bool b = line + 1 < heightInCtus;
         const bool c = col > 0;
-        const bool d = col + 1 < widthInCtus;
+        const bool d = col + 1 < tasksPerLine;
 
         if( a )
         {
           if( c && lineAbove[col - 1] < ALF ) return false;
           if(      lineAbove[col    ] < ALF ) return false;
-          if( d && lineAbove[col + 1] < ALF ) return false;
+          if( d && lineAbove[col + 1] < SAO_cont ) return false;
         }
 
         if( b )
         {
           if( c && lineBelow[col - 1] < ALF ) return false;
           if(      lineBelow[col    ] < ALF ) return false;
-          if( d && lineBelow[col + 1] < ALF ) return false;
+          if( d && lineBelow[col + 1] < SAO_cont ) return false;
         }
 
         if( c && thisLine[col - 1] < ALF ) return false;
-        if( d && thisLine[col + 1] < ALF ) return false;
+        if( d && thisLine[col + 1] < SAO_cont ) return false;
 
         if( onlyCheckReadyState )
           return true;
@@ -1038,7 +1066,7 @@ bool DecLibRecon::ctuTask( int tid, CtuTaskParam* param )
       else if( onlyCheckReadyState )
         return true;
 
-      thisCtuState = ( TaskType )( ALF + 1 );
+      thisCtuState = DONE;
     }
 
     default:

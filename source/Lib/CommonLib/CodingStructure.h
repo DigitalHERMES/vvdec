@@ -1,45 +1,41 @@
 /* -----------------------------------------------------------------------------
-The copyright in this software is being made available under the BSD
+The copyright in this software is being made available under the Clear BSD
 License, included below. No patent rights, trademark rights and/or 
 other Intellectual Property Rights other than the copyrights concerning 
 the Software are granted under this license.
 
-For any license concerning other Intellectual Property rights than the software, 
-especially patent licenses, a separate Agreement needs to be closed. 
-For more information please contact:
+The Clear BSD License
 
-Fraunhofer Heinrich Hertz Institute
-Einsteinufer 37
-10587 Berlin, Germany
-www.hhi.fraunhofer.de/vvc
-vvc@hhi.fraunhofer.de
-
-Copyright (c) 2018-2022, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. 
+Copyright (c) 2018-2022, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVdeC Authors.
 All rights reserved.
 
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met:
+Redistribution and use in source and binary forms, with or without modification,
+are permitted (subject to the limitations in the disclaimer below) provided that
+the following conditions are met:
 
- * Redistributions of source code must retain the above copyright notice,
-   this list of conditions and the following disclaimer.
- * Redistributions in binary form must reproduce the above copyright notice,
-   this list of conditions and the following disclaimer in the documentation
-   and/or other materials provided with the distribution.
- * Neither the name of Fraunhofer nor the names of its contributors may
-   be used to endorse or promote products derived from this software without
-   specific prior written permission.
+     * Redistributions of source code must retain the above copyright notice,
+     this list of conditions and the following disclaimer.
 
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS
-BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
-THE POSSIBILITY OF SUCH DAMAGE.
+     * Redistributions in binary form must reproduce the above copyright
+     notice, this list of conditions and the following disclaimer in the
+     documentation and/or other materials provided with the distribution.
+
+     * Neither the name of the copyright holder nor the names of its
+     contributors may be used to endorse or promote products derived from this
+     software without specific prior written permission.
+
+NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY
+THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
+CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
+CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
+BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
+IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGE.
 
 
 ------------------------------------------------------------------------------------------- */
@@ -74,20 +70,38 @@ enum PictureType
 // num collocated motion
 #define NUM_COMOT_IN_CTU ( MAX_CU_SIZE * MAX_CU_SIZE ) >> ( ( MIN_CU_LOG2 + 1 ) << 1 )
 
+
+struct CtuAlfData
+{
+  uint8_t ccAlfFilterControl[MAX_NUM_COMPONENT - 1];
+  uint8_t alfCtuEnableFlag  [MAX_NUM_COMPONENT];
+  uint8_t alfCtuAlternative [MAX_NUM_COMPONENT - 1];
+  short   alfCtbFilterIndex;
+
+  CtuAlfData() : ccAlfFilterControl{ 0, 0 }, alfCtuEnableFlag{ 0, 0, 0 } {}
+};
+
 struct CtuData
 {
   SAOBlkParam           saoParam;
+  CtuAlfData            alfParam;
   const Slice*          slice;
   const PPS*            pps;
   const SPS*            sps;
   const PicHeader*      ph;
+  int                   lineIdx, colIdx, ctuIdx;
+
+  CodingUnit           *firstCU, *lastCU;
+  unsigned              numCUs, numTUs;
+
+  ptrdiff_t             predBufOffset;
+  ptrdiff_t             dmvrMvCacheOffset;
 
   CodingUnit**          cuPtr  [MAX_NUM_CHANNEL_TYPE];
   LoopFilterParam*      lfParam[NUM_EDGE_DIR];
   MotionInfo*           motion;
   ColocatedMotionInfo*  colMotion;
 };
-
 // ---------------------------------------------------------------------------
 // coding structure
 // ---------------------------------------------------------------------------
@@ -106,8 +120,8 @@ public:
   std::shared_ptr<const SPS> sps;
   std::shared_ptr<const PPS> pps;
   PicHeader                 *picHeader;
-  std::shared_ptr<APS>       alfApss[ALF_CTB_MAX_NUM_APS];
-  std::shared_ptr<APS>       lmcsAps;
+  std::shared_ptr<const APS> alfApss[ALF_CTB_MAX_NUM_APS];
+  std::shared_ptr<const APS> lmcsAps;
   const PreCalcValues*       pcv;
 
   // data for which memory is partially borrowed from DecLibRecon
@@ -115,10 +129,7 @@ public:
   size_t            m_ctuDataSize;
 
   Pel*              m_predBuf;
-  ptrdiff_t         m_predBufOffset;
-  
   Mv*               m_dmvrMvCache;
-  ptrdiff_t         m_dmvrMvCacheOffset;
   // end of partially borrowed data
   
   CodingStructure( CUChunkCache* cuChunkCache, TUChunkCache* tuChunkCache );
@@ -138,8 +149,8 @@ public:
   {
     if( area.blocks[_chType].contains( pos ) )
     {
-      ptrdiff_t rsAddr = ctuRsAddr( pos, _chType );
-      ptrdiff_t inCtu  = inCtuPos ( pos, _chType );
+      int rsAddr = ctuRsAddr( pos, _chType );
+      int inCtu  = inCtuPos ( pos, _chType );
       return getCtuData( rsAddr ).cuPtr[_chType][inCtu];
     }
     else return nullptr;
@@ -149,8 +160,8 @@ public:
   {
     if( area.blocks[_chType].contains( pos ) )
     {
-      ptrdiff_t rsAddr = ctuRsAddr( pos, _chType );
-      ptrdiff_t inCtu  = inCtuPos ( pos, _chType );
+      int rsAddr = ctuRsAddr( pos, _chType );
+      int inCtu  = inCtuPos ( pos, _chType );
       return getCtuData( rsAddr ).cuPtr[_chType][inCtu];
     }
     else return nullptr;
@@ -166,9 +177,7 @@ public:
   CodingUnit&     addCU(const UnitArea &unit, const ChannelType _chType, const TreeType treeType, const ModeType modeType, const CodingUnit* cuLeft, const CodingUnit* cuAbove );
   TransformUnit&  addTU(const UnitArea &unit, const ChannelType _chType, CodingUnit &cu);
   void            addEmptyTUs(Partitioner &partitioner, CodingUnit& cu);
-  CUTraverser     traverseCUs(const UnitArea& _unit);
-
-  cCUTraverser    traverseCUs(const UnitArea& _unit) const;
+  CUTraverser     traverseCUs(const int ctuRsAddr);
 
   void initStructData();
 
@@ -177,18 +186,13 @@ public:
 
   void createInternals(const UnitArea& _unit);
 
-  unsigned   m_numCUs;
-  unsigned   m_numTUs;
-
   CUCache    m_cuCache;
   TUCache    m_tuCache;
 
   PelStorage m_reco;
   PelStorage m_rec_wrap;
 
-  CodingUnit* m_lastCU = nullptr;
-
-  size_t               m_widthInCtus;
+  unsigned int         m_widthInCtus;
   PosType              m_ctuSizeMask[2];
   PosType              m_ctuWidthLog2[2];
 
@@ -200,13 +204,13 @@ public:
 public:
 
   // in CTU coordinates
-  ptrdiff_t ctuRsAddr( int col, int line ) const { return col + ( line * m_widthInCtus ); }
+  int ctuRsAddr( int col, int line ) const { return col + ( line * m_widthInCtus ); }
   // in sample coordinates
-  ptrdiff_t ctuRsAddr( Position pos, ChannelType chType ) const { Position posL = recalcPosition( area.chromaFormat, chType, CH_L, pos ); return ctuRsAddr( posL.x >> pcv->maxCUWidthLog2, posL.y >> pcv->maxCUHeightLog2 ); }
+  int ctuRsAddr( Position pos, ChannelType chType ) const { Position posL = recalcPosition( area.chromaFormat, chType, CH_L, pos ); return ctuRsAddr( posL.x >> pcv->maxCUWidthLog2, posL.y >> pcv->maxCUHeightLog2 ); }
   // 4x4 luma block position within the CTU
-  ptrdiff_t inCtuPos ( Position pos, ChannelType chType ) const { return ( unitScale[chType].scaleHor( pos.x ) & m_ctuSizeMask[chType] ) + ( ( unitScale[chType].scaleVer( pos.y ) & m_ctuSizeMask[chType] ) << m_ctuWidthLog2[chType] ); }
+  int inCtuPos ( Position pos, ChannelType chType ) const { return ( unitScale[chType].scaleHor( pos.x ) & m_ctuSizeMask[chType] ) + ( ( unitScale[chType].scaleVer( pos.y ) & m_ctuSizeMask[chType] ) << m_ctuWidthLog2[chType] ); }
   // 8x8 luma block position within the CTU
-  ptrdiff_t colMotPos( Position pos )                     const { return ( g_colMiScaling.scaleHor( pos.x ) & ( m_ctuSizeMask[CH_L] >> 1 ) ) + ( ( g_colMiScaling.scaleVer( pos.y ) & ( m_ctuSizeMask[CH_L] >> 1 ) ) << ( m_ctuWidthLog2[CH_L] - 1 ) ); }
+  int colMotPos( Position pos )                     const { return ( g_colMiScaling.scaleHor( pos.x ) & ( m_ctuSizeMask[CH_L] >> 1 ) ) + ( ( g_colMiScaling.scaleVer( pos.y ) & ( m_ctuSizeMask[CH_L] >> 1 ) ) << ( m_ctuWidthLog2[CH_L] - 1 ) ); }
 
         CtuData& getCtuData( int col, int line )       { return m_ctuData[ctuRsAddr( col, line )]; }
   const CtuData& getCtuData( int col, int line ) const { return m_ctuData[ctuRsAddr( col, line )]; }
@@ -216,6 +220,7 @@ public:
 
   int m_IBCBufferWidth;
   std::vector<PelStorage> m_virtualIBCbuf;
+  std::vector<char>       hasIbcBlock;
   void initVIbcBuf( int numCtuLines, ChromaFormat chromaFormatIDC, int ctuSize );
   void fillIBCbuffer( CodingUnit &cu, int lineIdx );
 

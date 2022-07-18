@@ -1,45 +1,41 @@
 /* -----------------------------------------------------------------------------
-The copyright in this software is being made available under the BSD
+The copyright in this software is being made available under the Clear BSD
 License, included below. No patent rights, trademark rights and/or 
 other Intellectual Property Rights other than the copyrights concerning 
 the Software are granted under this license.
 
-For any license concerning other Intellectual Property rights than the software, 
-especially patent licenses, a separate Agreement needs to be closed. 
-For more information please contact:
+The Clear BSD License
 
-Fraunhofer Heinrich Hertz Institute
-Einsteinufer 37
-10587 Berlin, Germany
-www.hhi.fraunhofer.de/vvc
-vvc@hhi.fraunhofer.de
-
-Copyright (c) 2018-2022, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. 
+Copyright (c) 2018-2022, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVdeC Authors.
 All rights reserved.
 
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met:
+Redistribution and use in source and binary forms, with or without modification,
+are permitted (subject to the limitations in the disclaimer below) provided that
+the following conditions are met:
 
- * Redistributions of source code must retain the above copyright notice,
-   this list of conditions and the following disclaimer.
- * Redistributions in binary form must reproduce the above copyright notice,
-   this list of conditions and the following disclaimer in the documentation
-   and/or other materials provided with the distribution.
- * Neither the name of Fraunhofer nor the names of its contributors may
-   be used to endorse or promote products derived from this software without
-   specific prior written permission.
+     * Redistributions of source code must retain the above copyright notice,
+     this list of conditions and the following disclaimer.
 
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS
-BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
-THE POSSIBILITY OF SUCH DAMAGE.
+     * Redistributions in binary form must reproduce the above copyright
+     notice, this list of conditions and the following disclaimer in the
+     documentation and/or other materials provided with the distribution.
+
+     * Neither the name of the copyright holder nor the names of its
+     contributors may be used to endorse or promote products derived from this
+     software without specific prior written permission.
+
+NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY
+THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
+CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
+CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
+BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
+IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGE.
 
 
 ------------------------------------------------------------------------------------------- */
@@ -145,68 +141,7 @@ bool CABACReader::coding_tree_unit( CodingStructure& cs, Slice* slice, const Uni
 
   sao( cs, ctuRsAddr );
 
-  if( m_slice->getTileGroupAlfEnabledFlag( COMPONENT_Y ) )
-  {
-    const PreCalcValues& pcv                = *cs.pcv;
-    int                 frame_width_in_ctus = pcv.widthInCtus;
-    int                 ry                  = ctuRsAddr / frame_width_in_ctus;
-    int                 rx                  = ctuRsAddr - ry * frame_width_in_ctus;
-    const Position      pos( rx * cs.pcv->maxCUWidth, ry * cs.pcv->maxCUHeight );
-    bool                leftAvail  = cs.getCURestricted( pos.offset( -1, 0 ), pos, partitioner.currSliceIdx, partitioner.currTileIdx, CH_L ) ? true : false;
-    bool                aboveAvail = cs.getCURestricted( pos.offset( 0, -1 ), pos, partitioner.currSliceIdx, partitioner.currTileIdx, CH_L ) ? true : false;
-  
-    int leftCTUAddr  = leftAvail  ? ctuRsAddr - 1 : -1;
-    int aboveCTUAddr = aboveAvail ? ctuRsAddr - frame_width_in_ctus : -1;
-  
-    for( int compIdx = 0; compIdx < MAX_NUM_COMPONENT; compIdx++ )
-    {
-      if( m_slice->getTileGroupAlfEnabledFlag( ( ComponentID ) compIdx ) )
-      {
-        uint8_t* ctbAlfFlag = m_slice->getPic()->getAlfCtuEnableFlag( compIdx );
-        int ctx = 0;
-        ctx += leftCTUAddr  > -1 ? ( ctbAlfFlag[leftCTUAddr]  ? 1 : 0 ) : 0;
-        ctx += aboveCTUAddr > -1 ? ( ctbAlfFlag[aboveCTUAddr] ? 1 : 0 ) : 0;
-  
-        ctbAlfFlag[ctuRsAddr] = m_BinDecoder.decodeBin( Ctx::ctbAlfFlag( compIdx * 3 + ctx ) );
-  
-        if( isLuma( ( ComponentID ) compIdx ) && ctbAlfFlag[ctuRsAddr] )
-        {
-          readAlfCtuFilterIndex( cs, ctuRsAddr );
-        }
-
-        if( isChroma( ( ComponentID ) compIdx ) )
-        {
-          const int apsIdx                  = m_slice->getTileGroupApsIdChroma();
-          CHECK( m_slice->getAlfAPSs()[apsIdx] == nullptr, "APS not initialized" );
-          const AlfSliceParam& alfParam     = m_slice->getAlfAPSs()[apsIdx]->getAlfAPSParam();
-          const int numAlts                 = alfParam.numAlternativesChroma;
-          uint8_t* ctbAlfAlternative        = m_slice->getPic()->getAlfCtuAlternativeData( compIdx-1 );
-          ctbAlfAlternative[ctuRsAddr]      = 0;
-
-          if( ctbAlfFlag[ctuRsAddr] )
-          {
-            uint8_t decoded = 0;
-            while( decoded < numAlts - 1 && m_BinDecoder.decodeBin( Ctx::ctbAlfAlternative( compIdx - 1 ) ) )
-              ++decoded;
-            ctbAlfAlternative[ctuRsAddr] = decoded;
-          }
-        }
-      }
-    }
-  }
-
-  for( int compIdx = 1; compIdx < getNumberValidComponents( cs.pcv->chrFormat ); compIdx++ )
-  {
-    if( m_slice->getTileGroupCcAlfEnabledFlag( compIdx - 1 ) )
-    {
-      const int apsIdx        = compIdx == 1 ? m_slice->getTileGroupCcAlfCbApsId() : m_slice->getTileGroupCcAlfCrApsId();
-      const int filterCount   = m_slice->getAlfAPSs()[apsIdx]->getCcAlfAPSParam().ccAlfFilterCount[compIdx - 1];
-  
-      const Position lumaPos  = area.lumaPos();
-  
-      ccAlfFilterControlIdc( cs, ComponentID(compIdx), ctuRsAddr, m_slice->getPic()->getccAlfFilterControl( compIdx - 1 ), lumaPos, filterCount );
-    }
-  }
+  readAlf(cs, ctuRsAddr, partitioner);
 
   bool isLast = false;
 
@@ -282,10 +217,9 @@ bool CABACReader::dt_implicit_qt_split( CodingStructure& cs, Partitioner& partit
   return isLast;
 }
 
-void CABACReader::readAlfCtuFilterIndex( CodingStructure& cs, unsigned ctuRsAddr )
+short CABACReader::readAlfCtuFilterIndex( CodingStructure& cs, unsigned ctuRsAddr )
 {
-  short* alfCtbFilterSetIndex         = m_slice->getPic()->getAlfCtbFilterIndex();
-  const unsigned numAps               = m_slice->getTileGroupNumAps();
+  const unsigned numAps               = m_slice->getNumAlfAps();
   const unsigned numAvailableFiltSets = numAps + NUM_FIXED_FILTER_SETS;
   uint32_t filtIndex = 0;
 
@@ -306,41 +240,7 @@ void CABACReader::readAlfCtuFilterIndex( CodingStructure& cs, unsigned ctuRsAddr
     xReadTruncBinCode( filtIndex, NUM_FIXED_FILTER_SETS );
   }
 
-  alfCtbFilterSetIndex[ctuRsAddr] = filtIndex;
-}
-
-void CABACReader::ccAlfFilterControlIdc(CodingStructure &cs, const ComponentID compID, const int curIdx, uint8_t *filterControlIdc, Position lumaPos, int filterCount)
-{
-  Position       leftLumaPos    = lumaPos.offset(-(int)cs.pcv->maxCUWidth, 0);
-  Position       aboveLumaPos   = lumaPos.offset(0, -(int)cs.pcv->maxCUWidth);
-  const uint32_t curSliceIdx    = m_slice->getIndependentSliceIdx();
-  const uint32_t curTileIdx     = cs.pps->getTileIdx( lumaPos );
-  bool           leftAvail      = cs.getCURestricted( leftLumaPos,  lumaPos, curSliceIdx, curTileIdx, CH_L ) ? true : false;
-  bool           aboveAvail     = cs.getCURestricted( aboveLumaPos, lumaPos, curSliceIdx, curTileIdx, CH_L ) ? true : false;
-  int            ctxt           = 0;
-
-  if (leftAvail)
-  {
-    ctxt += ( filterControlIdc[curIdx - 1] ) ? 1 : 0;
-  }
-  if (aboveAvail)
-  {
-    ctxt += ( filterControlIdc[curIdx - cs.pcv->widthInCtus] ) ? 1 : 0;
-  }
-  ctxt += ( compID == COMPONENT_Cr ) ? 3 : 0;
-
-  int idcVal  = m_BinDecoder.decodeBin( Ctx::CcAlfFilterControlFlag( ctxt ) );
-  if ( idcVal )
-  {
-    while ( ( idcVal != filterCount ) && m_BinDecoder.decodeBinEP() )
-    {
-      idcVal++;
-    }
-  }
-  filterControlIdc[curIdx] = idcVal;
-
-  DTRACE(g_trace_ctx, D_SYNTAX, "ccAlfFilterControlIdc() compID=%d pos=(%d,%d) ctxt=%d, filterCount=%d, idcVal=%d\n",
-         compID, lumaPos.x, lumaPos.y, ctxt, filterCount, idcVal);
+  return filtIndex;
 }
 
 //================================================================================
@@ -488,8 +388,86 @@ void CABACReader::sao( CodingStructure& cs, unsigned ctuRsAddr )
   }
 }
 
+//================================================================================
+//    void  readAlf( cs, ctuRsAddr, partitioner )
+//================================================================================
+void CABACReader::readAlf( CodingStructure& cs, unsigned int ctuRsAddr, const Partitioner& partitioner )
+{
+  const PreCalcValues& pcv                = *cs.pcv;
+  int                 frame_width_in_ctus = pcv.widthInCtus;
+  int                 ry                  = ctuRsAddr / frame_width_in_ctus;
+  int                 rx                  = ctuRsAddr - ry * frame_width_in_ctus;
+  const Position      pos                 ( rx * cs.pcv->maxCUWidth, ry * cs.pcv->maxCUHeight );
+  bool                leftAvail           = cs.getCURestricted( pos.offset( -1, 0 ), pos, partitioner.currSliceIdx, partitioner.currTileIdx, CH_L ) ? true : false;
+  bool                aboveAvail          = cs.getCURestricted( pos.offset( 0, -1 ), pos, partitioner.currSliceIdx, partitioner.currTileIdx, CH_L ) ? true : false;
+  
+  CtuAlfData& currAlfData = cs.getCtuData( ctuRsAddr ).alfParam;
+  CtuAlfData  leftAlfData, aboveAlfData;
 
+  if( leftAvail )  leftAlfData  = cs.getCtuData( ctuRsAddr -                   1 ).alfParam;
+  if( aboveAvail ) aboveAlfData = cs.getCtuData( ctuRsAddr - frame_width_in_ctus ).alfParam;
 
+  if( m_slice->getAlfEnabledFlag( COMPONENT_Y ) )
+  {
+    for( int compIdx = 0; compIdx < MAX_NUM_COMPONENT; compIdx++ )
+    {
+      if( m_slice->getAlfEnabledFlag( ( ComponentID ) compIdx ) )
+      {
+        //uint8_t* ctbAlfFlag = m_slice->getPic()->getAlfCtuEnableFlag( compIdx );
+        int ctx = 0;
+          ctx += leftAlfData.alfCtuEnableFlag[compIdx];
+          ctx += aboveAlfData.alfCtuEnableFlag[compIdx];
+      
+        currAlfData.alfCtuEnableFlag[compIdx] = m_BinDecoder.decodeBin( Ctx::ctbAlfFlag( compIdx * 3 + ctx ) );
+      
+        if( isLuma( ( ComponentID ) compIdx ) && currAlfData.alfCtuEnableFlag[compIdx] )
+        {
+          currAlfData.alfCtbFilterIndex = readAlfCtuFilterIndex( cs, ctuRsAddr );
+        }
+
+        if( isChroma( ( ComponentID ) compIdx ) )
+        {
+          const int apsIdx                  = m_slice->getAlfApsIdChroma();
+          CHECK( m_slice->getAlfAPSs()[apsIdx] == nullptr, "APS not initialized" );
+          const AlfSliceParam& alfParam     = m_slice->getAlfAPSs()[apsIdx]->getAlfAPSParam();
+          const int numAlts                 = alfParam.numAlternativesChroma;
+          currAlfData.alfCtuAlternative[compIdx - 1] = 0;
+
+          if( currAlfData.alfCtuEnableFlag[compIdx] )
+          {
+            uint8_t decoded = 0;
+            while( decoded < numAlts - 1 && m_BinDecoder.decodeBin( Ctx::ctbAlfAlternative( compIdx - 1 ) ) )
+              ++decoded;
+            currAlfData.alfCtuAlternative[compIdx - 1] = decoded;
+          }
+        }
+      }
+    }
+  }
+  for( int compIdx = 1; compIdx < getNumberValidComponents( cs.pcv->chrFormat ); compIdx++ )
+  {
+    if( m_slice->getCcAlfEnabledFlag( compIdx - 1 ) )
+    {
+      int ctxt = 0;
+      ctxt += ( leftAlfData.ccAlfFilterControl[compIdx - 1] ) ? 1 : 0;
+      ctxt += ( aboveAlfData.ccAlfFilterControl[compIdx - 1] ) ? 1 : 0;
+      ctxt += ( compIdx == COMPONENT_Cr ) ? 3 : 0;
+
+      int idcVal  = m_BinDecoder.decodeBin( Ctx::CcAlfFilterControlFlag( ctxt ) );
+
+      if ( idcVal )
+      {
+        const int apsIdx        = compIdx == 1 ? m_slice->getCcAlfCbApsId() : m_slice->getCcAlfCrApsId();
+        const int filterCount   = m_slice->getAlfAPSs()[apsIdx]->getCcAlfAPSParam().ccAlfFilterCount[compIdx - 1];
+        while ( ( idcVal != filterCount ) && m_BinDecoder.decodeBinEP() )
+        {
+          idcVal++;
+        }
+      }
+      currAlfData.ccAlfFilterControl[compIdx - 1] = idcVal;
+    }
+  }
+}
 
 //================================================================================
 //  clause 7.3.11.4
@@ -953,6 +931,7 @@ void CABACReader::cu_skip_flag( CodingUnit& cu )
       //cu.setRootCbf    ( false );
       cu.setPredMode   ( MODE_IBC );
       //cu.setMmvdFlag   ( false );
+      cu.cs->hasIbcBlock[cu.ctuData->lineIdx] = 1;
     }
 
     return;
@@ -977,6 +956,7 @@ void CABACReader::cu_skip_flag( CodingUnit& cu )
         //cu.setRootCbf    ( false );
         cu.setPredMode   ( MODE_IBC );
         //cu.setMmvdFlag   ( false );
+        cu.cs->hasIbcBlock[cu.ctuData->lineIdx] = 1;
         return;
       }
 
@@ -989,6 +969,7 @@ void CABACReader::cu_skip_flag( CodingUnit& cu )
         cu.setPredMode           ( MODE_IBC );
         //cu.setMmvdFlag           ( false );
         //cu.setRegularMergeFlag   ( false );
+        cu.cs->hasIbcBlock[cu.ctuData->lineIdx] = 1;
       }
       else
       {
@@ -1111,6 +1092,7 @@ void CABACReader::pred_mode( CodingUnit& cu )
     if( m_BinDecoder.decodeBin( Ctx::IBCFlag( ctxidx ) ) )
     {
       cu.setPredMode( MODE_IBC );
+      cu.cs->hasIbcBlock[cu.ctuData->lineIdx] = 1;
     }
   }
 }
@@ -1183,6 +1165,7 @@ void CABACReader::cu_pred_data( CodingUnit &cu )
   if( !cu.Y().valid() ) // dual tree chroma CU
   {
     cu.setPredMode( MODE_IBC );
+    cu.cs->hasIbcBlock[cu.ctuData->lineIdx] = 1;
     return;
   }
 

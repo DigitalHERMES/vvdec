@@ -1,45 +1,41 @@
 /* -----------------------------------------------------------------------------
-The copyright in this software is being made available under the BSD
+The copyright in this software is being made available under the Clear BSD
 License, included below. No patent rights, trademark rights and/or 
 other Intellectual Property Rights other than the copyrights concerning 
 the Software are granted under this license.
 
-For any license concerning other Intellectual Property rights than the software, 
-especially patent licenses, a separate Agreement needs to be closed. 
-For more information please contact:
+The Clear BSD License
 
-Fraunhofer Heinrich Hertz Institute
-Einsteinufer 37
-10587 Berlin, Germany
-www.hhi.fraunhofer.de/vvc
-vvc@hhi.fraunhofer.de
-
-Copyright (c) 2018-2022, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. 
+Copyright (c) 2018-2022, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVdeC Authors.
 All rights reserved.
 
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met:
+Redistribution and use in source and binary forms, with or without modification,
+are permitted (subject to the limitations in the disclaimer below) provided that
+the following conditions are met:
 
- * Redistributions of source code must retain the above copyright notice,
-   this list of conditions and the following disclaimer.
- * Redistributions in binary form must reproduce the above copyright notice,
-   this list of conditions and the following disclaimer in the documentation
-   and/or other materials provided with the distribution.
- * Neither the name of Fraunhofer nor the names of its contributors may
-   be used to endorse or promote products derived from this software without
-   specific prior written permission.
+     * Redistributions of source code must retain the above copyright notice,
+     this list of conditions and the following disclaimer.
 
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS
-BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
-THE POSSIBILITY OF SUCH DAMAGE.
+     * Redistributions in binary form must reproduce the above copyright
+     notice, this list of conditions and the following disclaimer in the
+     documentation and/or other materials provided with the distribution.
+
+     * Neither the name of the copyright holder nor the names of its
+     contributors may be used to endorse or promote products derived from this
+     software without specific prior written permission.
+
+NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY
+THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
+CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
+CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
+BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
+IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGE.
 
 
 ------------------------------------------------------------------------------------------- */
@@ -886,92 +882,59 @@ void IntraPrediction::xPredIntraBDPCM(const CPelBuf &pSrc, PelBuf &pDst, const u
   }
 }
 
-void IntraPrediction::geneWeightedPred( const ComponentID compId, PelBuf &pred, const PredictionUnit &pu, Pel *srcBuf )
+void IntraPrediction::predBlendIntraCiip( PelUnitBuf &predUnit, const PredictionUnit &pu )
 {
-  const int            width      = pred.width;
-  const int            height     = pred.height;
-  const ptrdiff_t      srcStride  = width;
-  const ptrdiff_t      dstStride  = pred.stride;
-  Pel*                 dstBuf     = pred.buf;
-
-  CHECKD( width == 2, "Width of 2 is not supported" );
-
-  const CodingUnit &cu = pu;
-  const Position posBL = pu.Y().bottomLeft();
-  const Position posTR = pu.Y().topRight();
-
-  const CodingUnit *cuLeft  = cu.cs->getCURestricted( posBL.offset( -1, 0 ), cu, CHANNEL_TYPE_LUMA, cu.left );
-  const CodingUnit *cuAbove = cu.cs->getCURestricted( posTR.offset( 0, -1 ), cu, CHANNEL_TYPE_LUMA, cu.above );
-
-  const bool isNeigh0Intra = cuLeft  && ( CU::isIntra( *cuLeft ) );
-  const bool isNeigh1Intra = cuAbove && ( CU::isIntra( *cuAbove ) );
-
-  const int wIntra = 3 - !isNeigh0Intra  - !isNeigh1Intra;
-  const int wMerge = 3 - !!isNeigh0Intra - !!isNeigh1Intra;
-
-  for( int y = 0; y < height; y++ )
-  {
-    for( int x = 0; x < width; x += 4 )
-    {
-      dstBuf[y*dstStride + x + 0] = ( wMerge * dstBuf[y*dstStride + x + 0] + wIntra * srcBuf[y*srcStride + x + 0] + 2 ) >> 2;
-      dstBuf[y*dstStride + x + 1] = ( wMerge * dstBuf[y*dstStride + x + 1] + wIntra * srcBuf[y*srcStride + x + 1] + 2 ) >> 2;
-      dstBuf[y*dstStride + x + 2] = ( wMerge * dstBuf[y*dstStride + x + 2] + wIntra * srcBuf[y*srcStride + x + 2] + 2 ) >> 2;
-      dstBuf[y*dstStride + x + 3] = ( wMerge * dstBuf[y*dstStride + x + 3] + wIntra * srcBuf[y*srcStride + x + 3] + 2 ) >> 2;
-    }
-  }
-}
-
-void IntraPrediction::switchBuffer(const PredictionUnit &pu, ComponentID compID, PelBuf srcBuff, Pel *dst)
-{
-  Pel  *src = srcBuff.bufAt(0, 0);
-  int compWidth = compID == COMPONENT_Y ? pu.Y().width : pu.Cb().width;
-  int compHeight = compID == COMPONENT_Y ? pu.Y().height : pu.Cb().height;
-  for (int i = 0; i < compHeight; i++)
-  {
-    memcpy(dst, src, compWidth * sizeof(Pel));
-    src += srcBuff.stride;
-    dst += compWidth;
-  }
-}
-
-void IntraPrediction::geneIntrainterPred( const CodingUnit &cu )
-{
-  if( !cu.ciipFlag() )
-  {
-    return;
-  }
-  PROFILER_SCOPE_AND_STAGE_EXT( 1, g_timeProfiler, P_INTRAPRED, *cu.cs, compID );
-
-  const PredictionUnit &pu = cu;
-
-  PelUnitBuf predBuf;
-  predBuf.bufs.resize( 3 );
-
   int maxCompID = 1;
-  if( isChromaEnabled( pu.chromaFormat ) )
-  {
-    maxCompID = MAX_NUM_COMPONENT;
-  }
-  for( int currCompID = 0; currCompID < maxCompID; currCompID++ )
-  {
-    if( currCompID > 0 && pu.chromaSize().width <= 2 ) continue;
-
-    const ComponentID currCompID2 = (ComponentID) currCompID;
-
-    predBuf.bufs[currCompID] = PelBuf( getPredictorPtr2( currCompID2 ), cu.blocks[currCompID] );
-  }
-
-  const bool isUseFilter = IntraPrediction::useFilteredIntraRefSamples( COMPONENT_Y, pu, cu );
-  initIntraPatternChType( cu.firstTU, pu.Y(), isUseFilter );
-  predIntraAng( COMPONENT_Y, predBuf.Y(), pu, isUseFilter );
 
   if( isChromaEnabled( pu.chromaFormat ) && pu.chromaSize().width > 2 )
   {
-    initIntraPatternChType( cu.firstTU, pu.Cb(), false );
-    predIntraAng( COMPONENT_Cb, predBuf.Cb(), pu, false );
+    maxCompID = MAX_NUM_COMPONENT;
+  }
 
-    initIntraPatternChType( cu.firstTU, pu.Cr(), false );
-    predIntraAng( COMPONENT_Cr, predBuf.Cr(), pu, false );
+  for( int currCompID = 0; currCompID < maxCompID; currCompID++ )
+  {
+    PelBuf&              pred   = predUnit.bufs[ currCompID ];
+    const int            width  = pred.width;
+    const int            height = pred.height;
+    const ptrdiff_t      srcStride = width;
+    const ptrdiff_t      dstStride = pred.stride;
+    Pel*                 dstBuf    = pred.buf;
+    const bool           isUseFilter = currCompID == 0 && IntraPrediction::useFilteredIntraRefSamples( COMPONENT_Y, pu, pu );
+    Pel*                 srcBuf    = m_piYuvExt[!isUseFilter];
+    PelBuf               srcAreaBuf( srcBuf, srcStride, width, height );
+
+    {
+      PROFILER_SCOPE_AND_STAGE_EXT( 1, g_timeProfiler, P_INTRAPRED, *pu.cs, compID );
+
+      initIntraPatternChType( pu.firstTU, pu.blocks[currCompID], isUseFilter );
+      predIntraAng( ComponentID( currCompID ), srcAreaBuf, pu, isUseFilter );
+    }
+
+    CHECKD( width == 2, "Width of 2 is not supported" );
+
+    const CodingUnit& cu = pu;
+    const Position posBL = pu.Y().bottomLeft();
+    const Position posTR = pu.Y().topRight();
+
+    const CodingUnit* cuLeft  = cu.cs->getCURestricted( posBL.offset( -1, 0 ), cu, CHANNEL_TYPE_LUMA, cu.left );
+    const CodingUnit* cuAbove = cu.cs->getCURestricted( posTR.offset( 0, -1 ), cu, CHANNEL_TYPE_LUMA, cu.above );
+
+    const bool isNeigh0Intra = cuLeft  && ( CU::isIntra( *cuLeft ) );
+    const bool isNeigh1Intra = cuAbove && ( CU::isIntra( *cuAbove ) );
+
+    const int wIntra = 3 - !isNeigh0Intra - !isNeigh1Intra;
+    const int wMerge = 3 - !!isNeigh0Intra - !!isNeigh1Intra;
+
+    for( int y = 0; y < height; y++ )
+    {
+      for( int x = 0; x < width; x += 4 )
+      {
+        dstBuf[y * dstStride + x + 0] = ( wMerge * dstBuf[y * dstStride + x + 0] + wIntra * srcBuf[y * srcStride + x + 0] + 2 ) >> 2;
+        dstBuf[y * dstStride + x + 1] = ( wMerge * dstBuf[y * dstStride + x + 1] + wIntra * srcBuf[y * srcStride + x + 1] + 2 ) >> 2;
+        dstBuf[y * dstStride + x + 2] = ( wMerge * dstBuf[y * dstStride + x + 2] + wIntra * srcBuf[y * srcStride + x + 2] + 2 ) >> 2;
+        dstBuf[y * dstStride + x + 3] = ( wMerge * dstBuf[y * dstStride + x + 3] + wIntra * srcBuf[y * srcStride + x + 3] + 2 ) >> 2;
+      }
+    }
   }
 }
 
@@ -1408,7 +1371,7 @@ int isAboveAvailable(const TransformUnit &tu, const ChannelType &chType, const P
 
     if( !cuAbove ) break;
     pcTUAbove = getTU( *cuAbove, refPos, chType );
-    if( pcTUAbove->idx >= currTUIdx ) break;
+    if( cuAbove->ctuData == cu.ctuData && pcTUAbove->idx >= currTUIdx ) break;
 
     int diff  = ( int ) pcTUAbove->blocks[chType].width - refPos.x + pcTUAbove->blocks[chType].x;
     dx       += diff;
@@ -1438,7 +1401,7 @@ int isLeftAvailable(const TransformUnit &tu, const ChannelType &chType, const Po
 
     if( !cuLeft ) break;
     pcTULeft = getTU( *cuLeft, refPos, chType );
-    if( pcTULeft->idx >= currTUIdx ) break;
+    if( cuLeft->ctuData == cu.ctuData && pcTULeft->idx >= currTUIdx ) break;
 
     int diff  = ( int ) pcTULeft->blocks[chType].height - refPos.y + pcTULeft->blocks[chType].y;
     dy       += diff;
@@ -1450,7 +1413,7 @@ int isLeftAvailable(const TransformUnit &tu, const ChannelType &chType, const Po
   return neighborSize;
 }
 // LumaRecPixels
-void IntraPrediction::xGetLumaRecPixels(const PredictionUnit &pu, CompArea chromaArea)
+NO_THREAD_SANITIZE void IntraPrediction::xGetLumaRecPixels(const PredictionUnit &pu, CompArea chromaArea)
 {
   int iDstStride = 0;
   Pel* pDst0 = 0;
@@ -1925,7 +1888,7 @@ void IntraPrediction::xGetLMParameters(const PredictionUnit &pu, const Component
       int v = DivSigTable[normDiff] | 8;
       x += normDiff != 0;
 
-      int y = getLog2( abs( diffC ) ) + 1;
+      int y = diffC == 0 ? 0 : getLog2( abs( diffC ) ) + 1;
       int add = 1 << y >> 1;
       a = (diffC * v + add) >> y;
       iShift = 3 + x - y;
@@ -1992,7 +1955,7 @@ void IntraPrediction::predIntraMip( const ComponentID compId, PelBuf &piPred, co
   CHECK(modeIdx >= getNumModesMip(piPred), "Error: Wrong MIP mode index");
 
   const int bitDepth = pu.sps->getBitDepth( toChannelType( compId ) );
-  m_matrixIntraPred.predBlock( piPred, modeIdx, piPred, transposeFlag, bitDepth, compId );
+  m_matrixIntraPred.predBlock( piPred, modeIdx, piPred, transposeFlag, bitDepth, compId, m_piYuvExt[0] );
 }
 
 }

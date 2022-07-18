@@ -1,45 +1,41 @@
 /* -----------------------------------------------------------------------------
-The copyright in this software is being made available under the BSD
-License, included below. No patent rights, trademark rights and/or
-other Intellectual Property Rights other than the copyrights concerning
+The copyright in this software is being made available under the Clear BSD
+License, included below. No patent rights, trademark rights and/or 
+other Intellectual Property Rights other than the copyrights concerning 
 the Software are granted under this license.
 
-For any license concerning other Intellectual Property rights than the software,
-especially patent licenses, a separate Agreement needs to be closed.
-For more information please contact:
+The Clear BSD License
 
-Fraunhofer Heinrich Hertz Institute
-Einsteinufer 37
-10587 Berlin, Germany
-www.hhi.fraunhofer.de/vvc
-vvc@hhi.fraunhofer.de
-
-Copyright (c) 2018-2022, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V.
+Copyright (c) 2018-2022, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVdeC Authors.
 All rights reserved.
 
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met:
+Redistribution and use in source and binary forms, with or without modification,
+are permitted (subject to the limitations in the disclaimer below) provided that
+the following conditions are met:
 
- * Redistributions of source code must retain the above copyright notice,
-   this list of conditions and the following disclaimer.
- * Redistributions in binary form must reproduce the above copyright notice,
-   this list of conditions and the following disclaimer in the documentation
-   and/or other materials provided with the distribution.
- * Neither the name of Fraunhofer nor the names of its contributors may
-   be used to endorse or promote products derived from this software without
-   specific prior written permission.
+     * Redistributions of source code must retain the above copyright notice,
+     this list of conditions and the following disclaimer.
 
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS
-BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
-THE POSSIBILITY OF SUCH DAMAGE.
+     * Redistributions in binary form must reproduce the above copyright
+     notice, this list of conditions and the following disclaimer in the
+     documentation and/or other materials provided with the distribution.
+
+     * Neither the name of the copyright holder nor the names of its
+     contributors may be used to endorse or promote products derived from this
+     software without specific prior written permission.
+
+NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY
+THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
+CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
+CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
+BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
+IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGE.
 
 
 ------------------------------------------------------------------------------------------- */
@@ -1241,32 +1237,32 @@ void PU::getInterMergeCandidates( const PredictionUnit &pu, MergeCtx& mrgCtx, Mo
     }
   }
 
-  uint32_t uiArrayAddr = cnt;
+  int iArrayAddr = cnt;
 
   int iNumRefIdx = slice.isInterB() ? std::min(slice.getNumRefIdx(REF_PIC_LIST_0), slice.getNumRefIdx(REF_PIC_LIST_1)) : slice.getNumRefIdx(REF_PIC_LIST_0);
 
   int r = 0;
   int refcnt = 0;
   // second condition needed for gcc-10 overflow checking. Required for now. TODO: fix properly
-  while (uiArrayAddr < maxNumMergeCand && uiArrayAddr < MRG_MAX_NUM_CANDS)
+  while (iArrayAddr < maxNumMergeCand && iArrayAddr < MRG_MAX_NUM_CANDS)
   {
-    mrgCtx.interDirNeighbours [uiArrayAddr     ] = 1;
-    mrgCtx.BcwIdx             [uiArrayAddr     ] = BCW_DEFAULT;
-    mrgCtx.mvFieldNeighbours  [uiArrayAddr << 1] . setMvField(Mv(0, 0), r);
-    mrgCtx.useAltHpelIf       [uiArrayAddr     ] = false;
+    mrgCtx.interDirNeighbours [iArrayAddr     ] = 1;
+    mrgCtx.BcwIdx             [iArrayAddr     ] = BCW_DEFAULT;
+    mrgCtx.mvFieldNeighbours  [iArrayAddr << 1] . setMvField(Mv(0, 0), r);
+    mrgCtx.useAltHpelIf       [iArrayAddr     ] = false;
 
     if (slice.isInterB())
     {
-      mrgCtx.interDirNeighbours [ uiArrayAddr          ] = 3;
-      mrgCtx.mvFieldNeighbours  [(uiArrayAddr << 1) + 1].setMvField(Mv(0, 0), r);
+      mrgCtx.interDirNeighbours [ iArrayAddr          ] = 3;
+      mrgCtx.mvFieldNeighbours  [(iArrayAddr << 1) + 1].setMvField(Mv(0, 0), r);
     }
 
-    if ( mrgCtx.interDirNeighbours[uiArrayAddr] == 1 && cu.slice->getRefPOC(REF_PIC_LIST_0, mrgCtx.mvFieldNeighbours[uiArrayAddr << 1].mfRefIdx) == cu.slice->getPOC())
+    if ( mrgCtx.interDirNeighbours[iArrayAddr] == 1 && cu.slice->getRefPOC(REF_PIC_LIST_0, mrgCtx.mvFieldNeighbours[iArrayAddr << 1].mfRefIdx) == cu.slice->getPOC())
     {
-      mrgCtx.mrgTypeNeighbours[uiArrayAddr] = MRG_TYPE_IBC;
+      mrgCtx.mrgTypeNeighbours[iArrayAddr] = MRG_TYPE_IBC;
     }
 
-    uiArrayAddr++;
+    iArrayAddr++;
 
     if (refcnt == iNumRefIdx - 1)
     {
@@ -1278,7 +1274,7 @@ void PU::getInterMergeCandidates( const PredictionUnit &pu, MergeCtx& mrgCtx, Mo
       ++refcnt;
     }
   }
-  mrgCtx.numValidMergeCand = uiArrayAddr;
+  mrgCtx.numValidMergeCand = iArrayAddr;
 }
 
 bool PU::checkDMVRCondition( const PredictionUnit& pu )
@@ -1348,7 +1344,7 @@ int convertMvFixedToFloat(int32_t val)
     int round = (1 << scale) >> 1;
     int n     = (val + round) >> scale;
     exponent  = scale + ((n ^ sign) >> (MV_MANTISSA_BITCOUNT - 1));
-    mantissa  = (n & MV_MANTISSA_UPPER_LIMIT) | (sign << (MV_MANTISSA_BITCOUNT - 1));
+    mantissa  = (n & MV_MANTISSA_UPPER_LIMIT) | (sign *(1<< (MV_MANTISSA_BITCOUNT - 1)));
   }
   else
   {
@@ -1356,14 +1352,14 @@ int convertMvFixedToFloat(int32_t val)
     mantissa = val;
   }
 
-  return exponent | (mantissa << MV_EXPONENT_BITCOUNT);
+  return exponent | (mantissa *(1<< MV_EXPONENT_BITCOUNT));
 }
 
 int convertMvFloatToFixed(int val)
 {
   int exponent = val & MV_EXPONENT_MASK;
   int mantissa = val >> MV_EXPONENT_BITCOUNT;
-  return exponent == 0 ? mantissa : (mantissa ^ MV_MANTISSA_LIMIT) << (exponent - 1);
+  return exponent == 0 ? mantissa : (mantissa ^ MV_MANTISSA_LIMIT) *(1<< (exponent - 1));
 }
 
 int roundMvComp(int x)
@@ -1743,7 +1739,7 @@ bool PU::addAffineMVPCandUnscaled( const PredictionUnit &pu, const RefPicList &r
       continue;
     }
 
-    xInheritedAffineMv( pu, neibCU, eRefPicListIndex, outputAffineMv );
+    xInheritedAffineMv( pu, pu.affineType() == AFFINEMODEL_6PARAM, neibCU, eRefPicListIndex, outputAffineMv );
 
     if( pu.imv() == 0 )
     {
@@ -1778,7 +1774,7 @@ bool PU::addAffineMVPCandUnscaled( const PredictionUnit &pu, const RefPicList &r
   return false;
 }
 
-void PU::xInheritedAffineMv( const PredictionUnit &pu, const PredictionUnit* puNeighbour, RefPicList eRefPicList, Mv rcMv[3] )
+void PU::xInheritedAffineMv( const PredictionUnit &pu, bool is6param, const PredictionUnit* puNeighbour, RefPicList eRefPicList, Mv rcMv[3] )
 {
   int posNeiX = puNeighbour->Y().pos().x;
   int posNeiY = puNeighbour->Y().pos().y;
@@ -1810,12 +1806,12 @@ void PU::xInheritedAffineMv( const PredictionUnit &pu, const PredictionUnit* puN
   int shift = MAX_CU_DEPTH;
   int iDMvHorX, iDMvHorY, iDMvVerX, iDMvVerY;
 
-  iDMvHorX = (mvRT - mvLT).getHor() << (shift - getLog2(neiW));
-  iDMvHorY = (mvRT - mvLT).getVer() << (shift - getLog2(neiW));
+  iDMvHorX = (mvRT - mvLT).getHor() *(1<< (shift - getLog2(neiW)));
+  iDMvHorY = (mvRT - mvLT).getVer() *(1<< (shift - getLog2(neiW)));
   if ( puNeighbour->affineType() == AFFINEMODEL_6PARAM && !isTopCtuBoundary )
   {
-    iDMvVerX = (mvLB - mvLT).getHor() << (shift - getLog2(neiH));
-    iDMvVerY = (mvLB - mvLT).getVer() << (shift - getLog2(neiH));
+    iDMvVerX = (mvLB - mvLT).getHor() *(1<< (shift - getLog2(neiH)));
+    iDMvVerY = (mvLB - mvLT).getVer() *(1<< (shift - getLog2(neiH)));
   }
   else
   {
@@ -1823,8 +1819,8 @@ void PU::xInheritedAffineMv( const PredictionUnit &pu, const PredictionUnit* puN
     iDMvVerY = iDMvHorX;
   }
 
-  int iMvScaleHor = mvLT.getHor() << shift;
-  int iMvScaleVer = mvLT.getVer() << shift;
+  int iMvScaleHor = mvLT.getHor() *(1<< shift);
+  int iMvScaleVer = mvLT.getVer() *(1<< shift);
   int horTmp, verTmp;
 
   // v0
@@ -1844,7 +1840,7 @@ void PU::xInheritedAffineMv( const PredictionUnit &pu, const PredictionUnit* puN
   rcMv[1].clipToStorageBitDepth();
 
   // v2
-  if ( pu.affineType() == AFFINEMODEL_6PARAM )
+  if ( is6param )
   {
     horTmp = iMvScaleHor + iDMvHorX * (posCurX - posNeiX) + iDMvVerX * (posCurY + curH - posNeiY);
     verTmp = iMvScaleVer + iDMvHorY * (posCurX - posNeiX) + iDMvVerY * (posCurY + curH - posNeiY);
@@ -2278,8 +2274,8 @@ void PU::getAffineControlPointCand( const PredictionUnit &pu, MotionInfo mi[4], 
         break;
 
       case 5: // 5 : LT, LB
-        vx = (cMv[l][0].hor << shift) + ((cMv[l][2].ver - cMv[l][0].ver) << shiftHtoW);
-        vy = (cMv[l][0].ver << shift) - ((cMv[l][2].hor - cMv[l][0].hor) << shiftHtoW);
+        vx = (cMv[l][0].hor *(1<< shift)) + ((cMv[l][2].ver - cMv[l][0].ver) *(1<< shiftHtoW));
+        vy = (cMv[l][0].ver *(1<< shift)) - ((cMv[l][2].hor - cMv[l][0].hor) *(1<< shiftHtoW));
         roundAffineMv( vx, vy, shift );
         cMv[l][1].set( vx, vy );
         cMv[l][1].clipToStorageBitDepth();
@@ -2463,18 +2459,17 @@ void PU::getAffineMergeCand( const PredictionUnit &pu, AffineMergeCtx& affMrgCtx
       // derive Mv from Neigh affine PU
       Mv cMv[2][3];
       const PredictionUnit* puNeigh = npu[idx];
-      const_cast<PredictionUnit&>( pu ).setAffineType( puNeigh->affineType() );
 
       if( puNeigh->interDir() != 2 )
       {
-        xInheritedAffineMv( pu, puNeigh, REF_PIC_LIST_0, cMv[0] );
+        xInheritedAffineMv( pu, puNeigh->affineType() == AFFINEMODEL_6PARAM, puNeigh, REF_PIC_LIST_0, cMv[0] );
       }
 
       if( slice.isInterB() )
       {
         if( puNeigh->interDir() != 1 )
         {
-          xInheritedAffineMv( pu, puNeigh, REF_PIC_LIST_1, cMv[1] );
+          xInheritedAffineMv( pu, puNeigh->affineType() == AFFINEMODEL_6PARAM, puNeigh, REF_PIC_LIST_1, cMv[1] );
         }
       }
 
@@ -2710,13 +2705,13 @@ void PU::setAllAffineMv( PredictionUnit& pu, Mv affLT, Mv affRT, Mv affLB, RefPi
 
   int deltaMvHorX, deltaMvHorY, deltaMvVerX, deltaMvVerY;
 
-  deltaMvHorX = ( affRT - affLT ).getHor() << ( shift - getLog2( width ) );
-  deltaMvHorY = ( affRT - affLT ).getVer() << ( shift - getLog2( width ) );
+  deltaMvHorX = ( affRT - affLT ).getHor() *(1<< ( shift - getLog2( width )) );
+  deltaMvHorY = ( affRT - affLT ).getVer() *(1<< ( shift - getLog2( width )) );
 
   if ( pu.affineType() == AFFINEMODEL_6PARAM )
   {
-    deltaMvVerX = ( affLB - affLT ).getHor() << ( shift - getLog2( height ) );
-    deltaMvVerY = ( affLB - affLT ).getVer() << ( shift - getLog2( height ) );
+    deltaMvVerX = ( affLB - affLT ).getHor() *(1<< ( shift - getLog2( height )) );
+    deltaMvVerY = ( affLB - affLT ).getVer() *(1<< ( shift - getLog2( height )) );
   }
   else
   {
@@ -2724,8 +2719,8 @@ void PU::setAllAffineMv( PredictionUnit& pu, Mv affLT, Mv affRT, Mv affLB, RefPi
     deltaMvVerY =  deltaMvHorX;
   }
 
-  const int mvScaleHor = affLT.getHor() << shift;
-  const int mvScaleVer = affLT.getVer() << shift;
+  const int mvScaleHor = affLT.getHor() *(1<< shift);
+  const int mvScaleVer = affLT.getVer() *(1<< shift);
 
   MotionBuf mb = pu.getMotionBuf();
 
@@ -3162,7 +3157,7 @@ bool PU::isBiPredFromDifferentDirEqDistPoc( const PredictionUnit& pu )
 {
   if( pu.refIdx[0] >= 0 && pu.refIdx[1] >= 0 )
   {
-    if( pu.slice->getRefPic(REF_PIC_LIST_0, pu.refIdx[0])->longTerm || pu.slice->getRefPic(REF_PIC_LIST_1, pu.refIdx[1])->longTerm )
+    if( pu.slice->getIsUsedAsLongTerm( REF_PIC_LIST_0, pu.refIdx[0] ) || pu.slice->getIsUsedAsLongTerm( REF_PIC_LIST_1, pu.refIdx[1] ) )
     {
       return false;
     }
@@ -3317,10 +3312,10 @@ void PU::spanGeoMotionInfo( PredictionUnit &pu, MergeCtx &geoMrgCtx, const uint8
   }
   for (int y = 0; y < mb.height; y++)
   {
-    lookUpY = (((4 * y + offsetY) << 1) + 5) * g_Dis[distanceY];
+    lookUpY = (((4 * y + offsetY) *2) + 5) * g_Dis[distanceY];
     for (int x = 0; x < mb.width; x++)
     {
-      motionIdx = (((4 * x + offsetX) << 1) + 5) * g_Dis[distanceX] + lookUpY;
+      motionIdx = (((4 * x + offsetX) *2) + 5) * g_Dis[distanceX] + lookUpY;
       tpmMask = abs(motionIdx) < 32 ? 2 : (motionIdx <= 0 ? (1 - isFlip) : isFlip);
       if (tpmMask == 2)
       {
@@ -3848,16 +3843,16 @@ bool PU::isRefPicSameSize( const PredictionUnit& pu )
 
   if( pu.refIdx[0] >= 0 )
   {
-    int refPicWidth  = pu.slice->getRefPic( REF_PIC_LIST_0, pu.refIdx[0] )->unscaledPic->cs->pps->getPicWidthInLumaSamples();
-    int refPicHeight = pu.slice->getRefPic( REF_PIC_LIST_0, pu.refIdx[0] )->unscaledPic->cs->pps->getPicHeightInLumaSamples();
+    int refPicWidth  = pu.slice->getRefPic( REF_PIC_LIST_0, pu.refIdx[0] )->cs->pps->getPicWidthInLumaSamples();
+    int refPicHeight = pu.slice->getRefPic( REF_PIC_LIST_0, pu.refIdx[0] )->cs->pps->getPicHeightInLumaSamples();
 
     samePicSize = refPicWidth == curPicWidth && refPicHeight == curPicHeight;
   }
 
   if( pu.refIdx[1] >= 0 )
   {
-    int refPicWidth  = pu.slice->getRefPic( REF_PIC_LIST_1, pu.refIdx[1] )->unscaledPic->cs->pps->getPicWidthInLumaSamples();
-    int refPicHeight = pu.slice->getRefPic( REF_PIC_LIST_1, pu.refIdx[1] )->unscaledPic->cs->pps->getPicHeightInLumaSamples();
+    int refPicWidth  = pu.slice->getRefPic( REF_PIC_LIST_1, pu.refIdx[1] )->cs->pps->getPicWidthInLumaSamples();
+    int refPicHeight = pu.slice->getRefPic( REF_PIC_LIST_1, pu.refIdx[1] )->cs->pps->getPicHeightInLumaSamples();
 
     samePicSize = samePicSize && ( refPicWidth == curPicWidth && refPicHeight == curPicHeight );
   }

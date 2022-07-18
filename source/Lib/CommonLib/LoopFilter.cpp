@@ -1,45 +1,41 @@
 /* -----------------------------------------------------------------------------
-The copyright in this software is being made available under the BSD
+The copyright in this software is being made available under the Clear BSD
 License, included below. No patent rights, trademark rights and/or 
 other Intellectual Property Rights other than the copyrights concerning 
 the Software are granted under this license.
 
-For any license concerning other Intellectual Property rights than the software, 
-especially patent licenses, a separate Agreement needs to be closed. 
-For more information please contact:
+The Clear BSD License
 
-Fraunhofer Heinrich Hertz Institute
-Einsteinufer 37
-10587 Berlin, Germany
-www.hhi.fraunhofer.de/vvc
-vvc@hhi.fraunhofer.de
-
-Copyright (c) 2018-2022, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. 
+Copyright (c) 2018-2022, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVdeC Authors.
 All rights reserved.
 
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met:
+Redistribution and use in source and binary forms, with or without modification,
+are permitted (subject to the limitations in the disclaimer below) provided that
+the following conditions are met:
 
- * Redistributions of source code must retain the above copyright notice,
-   this list of conditions and the following disclaimer.
- * Redistributions in binary form must reproduce the above copyright notice,
-   this list of conditions and the following disclaimer in the documentation
-   and/or other materials provided with the distribution.
- * Neither the name of Fraunhofer nor the names of its contributors may
-   be used to endorse or promote products derived from this software without
-   specific prior written permission.
+     * Redistributions of source code must retain the above copyright notice,
+     this list of conditions and the following disclaimer.
 
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS
-BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
-THE POSSIBILITY OF SUCH DAMAGE.
+     * Redistributions in binary form must reproduce the above copyright
+     notice, this list of conditions and the following disclaimer in the
+     documentation and/or other materials provided with the distribution.
+
+     * Neither the name of the copyright holder nor the names of its
+     contributors may be used to endorse or promote products derived from this
+     software without specific prior written permission.
+
+NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY
+THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
+CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
+CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
+BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
+IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGE.
 
 
 ------------------------------------------------------------------------------------------- */
@@ -338,7 +334,7 @@ static inline void xPelFilterChroma( Pel* piSrc, const ptrdiff_t iOffset, const 
   }
   else
   {
-    delta           = Clip3( -tc, tc, ( ( ( ( m4 - m3 ) << 2 ) + m2 - m5 + 4 ) >> 3 ) );
+    delta           = Clip3( -tc, tc, ( ( ( ( m4 - m3 ) *4 ) + m2 - m5 + 4 ) >> 3 ) );
 
     piSrc[-iOffset] = ClipPel( m3 + delta, clpRng );
     piSrc[       0] = ClipPel( m4 - delta, clpRng );
@@ -365,110 +361,11 @@ LoopFilter::~LoopFilter()
 // Public member functions
 // ====================================================================================================================
 
-/**
- - call deblocking function for every CU
- .
- \param  pcPic   picture class (Pic) pointer
- */
-void LoopFilter::loopFilterPic( CodingStructure& cs ) const
-{
-  PROFILER_SCOPE_AND_STAGE( 1, g_timeProfiler, P_DBFILTER );
-  if( cs.pps->getDeblockingFilterControlPresentFlag() && cs.pps->getPPSDeblockingFilterDisabledFlag() && !cs.pps->getDeblockingFilterOverrideEnabledFlag() )
-  {
-    return;
-  }
-
-  const PreCalcValues& pcv = *cs.pcv;
-
-  DTRACE_UPDATE( g_trace_ctx, ( std::make_pair( "poc", cs.picture->poc ) ) );
-
-#if ENABLE_TRACING
-  for( int y = 0; y < pcv.heightInCtus; y++ )
-  {
-    for( int x = 0; x < pcv.widthInCtus; x++ )
-    {
-      const UnitArea ctuArea( pcv.chrFormat, Area( x << pcv.maxCUWidthLog2, y << pcv.maxCUHeightLog2, pcv.maxCUWidth, pcv.maxCUWidth ) );
-      DTRACE    ( g_trace_ctx, D_CRC, "CTU %d %d", ctuArea.Y().x, ctuArea.Y().y );
-      DTRACE_CRC( g_trace_ctx, D_CRC, cs, cs.picture->getRecoBuf( clipArea( ctuArea, *cs.picture ) ), &ctuArea.Y() );
-    }
-  }
-#endif
-
-  for( unsigned y = 0; y < pcv.heightInCtus; y++ )
-  {
-    loopFilterPicLine( cs, MAX_NUM_CHANNEL_TYPE, y );
-  }
-
-  DTRACE_PIC_COMP(D_REC_CB_LUMA_LF,   cs, cs.getRecoBuf(), COMPONENT_Y);
-  DTRACE_PIC_COMP(D_REC_CB_CHROMA_LF, cs, cs.getRecoBuf(), COMPONENT_Cb);
-  DTRACE_PIC_COMP(D_REC_CB_CHROMA_LF, cs, cs.getRecoBuf(), COMPONENT_Cr);
-
-  DTRACE    ( g_trace_ctx, D_CRC, "LoopFilter" );
-  DTRACE_CRC( g_trace_ctx, D_CRC, cs, cs.getRecoBuf() );
-}
-
-void LoopFilter::loopFilterPicLine( CodingStructure &cs, const ChannelType chType, const int ctuLine, const int offset, const DeblockEdgeDir edgeDir ) const
-{
-  PROFILER_SCOPE_AND_STAGE( 1, g_timeProfiler, P_DBFILTER );
-  const PreCalcValues &pcv = *cs.pcv;
-
-  const bool frstLine = ctuLine == 0;
-
-  const int ly = frstLine ? 0 : ( ctuLine * pcv.maxCUHeight + offset );
-  const int lh = frstLine ? pcv.maxCUHeight + offset : pcv.maxCUHeight;
-
-  if( ly >= pcv.lumaHeight )
-  {
-    return;
-  }
-
-  UnitArea prevCtuArea;
-
-  const UnitArea ctuArea = clipArea( UnitArea( pcv.chrFormat, Area( 0, ly, pcv.maxCUWidth, lh ) ), *cs.picture );
-
-  if( edgeDir == NUM_EDGE_DIR || edgeDir == EDGE_VER )
-  {
-    xDeblockCtuArea<EDGE_VER>( cs, ctuArea, chType );
-  }
-
-  prevCtuArea = ctuArea;
-
-  for( unsigned x = 1; x < pcv.widthInCtus; x++ )
-  {
-    const UnitArea ctuArea = clipArea( UnitArea( pcv.chrFormat, Area( x << pcv.maxCUWidthLog2, ly, pcv.maxCUWidth, lh ) ), *cs.picture );
-
-    if( edgeDir == NUM_EDGE_DIR || edgeDir == EDGE_VER )
-    {
-      xDeblockCtuArea<EDGE_VER>( cs, ctuArea, chType );
-    }
-    if( edgeDir == NUM_EDGE_DIR || edgeDir == EDGE_HOR )
-    {
-      xDeblockCtuArea<EDGE_HOR>( cs, prevCtuArea, chType );
-    }
-
-    prevCtuArea = ctuArea;
-  }
-
-  if( edgeDir == NUM_EDGE_DIR || edgeDir == EDGE_HOR )
-  {
-    xDeblockCtuArea<EDGE_HOR>( cs, prevCtuArea, chType );
-  }
-
-#if ENABLE_TRACING
-  for( unsigned x = 0; x < pcv.widthInCtus; x++ )
-  {
-    const UnitArea ctuArea( pcv.chrFormat, Area( x << pcv.maxCUWidthLog2, ly, pcv.maxCUWidth, pcv.maxCUWidth ) );
-    DTRACE    ( g_trace_ctx, D_CRC, "CTU %d %d", ctuArea.Y().x, ctuArea.Y().y );
-    DTRACE_CRC( g_trace_ctx, D_CRC, cs, cs.picture->getRecoBuf( clipArea( ctuArea, *cs.picture ) ), &ctuArea.Y() );
-  }
-#endif
-}
-
-void LoopFilter::calcFilterStrengthsCTU( CodingStructure& cs, const UnitArea& ctuArea )
+void LoopFilter::calcFilterStrengthsCTU( CodingStructure& cs, const int ctuRsAddr )
 {
   PROFILER_SCOPE_AND_STAGE( 1, g_timeProfiler, P_DBFILTER );
 
-  for( auto &currCU : cs.traverseCUs( clipArea( ctuArea, *cs.picture ) ) )
+  for( auto &currCU : cs.traverseCUs( ctuRsAddr ) )
   {
     if( currCU.slice->getDeblockingFilterDisable() )
     {
@@ -899,6 +796,7 @@ void LoopFilter::xSetMaxFilterLengthPQFromTransformSizes( const CodingUnit& cu, 
   {
     const ChannelType ch  = ( ChannelType ) ct;
     const bool        vld = isLuma( ch ) ? currTU.Y().valid() : currTU.Cb().valid();
+
     if( vld && perpPos<edgeDir>( currTU.blocks[ch] ) != 0 )
     {
       LoopFilterParam* lfpPtr    = ctuData.lfParam[edgeDir] + cu.cs->inCtuPos( currTU.blocks[ct], ch );
@@ -921,69 +819,181 @@ void LoopFilter::xSetMaxFilterLengthPQFromTransformSizes( const CodingUnit& cu, 
         cuPfstCh = cuPfstCh->blocks[start].contains( posPfst ) ? cuPfstCh : cu.cs->getCU( posPfst, start );
       }
 
-      for( int d = 0, dFst = 0; d < parlSize<edgeDir>( currTU.blocks[ch] ); d += inc, dFst += incFst )
+      bool bSameCUTUSize = perpPos<edgeDir>( currTU.blocks[ch] ) == perpPos<edgeDir>( cu.blocks[ch] );
+      if( ct == end && deriveBdStrngt )
       {
-        const Position  posQ     { currTU.blocks[ch].x + edgeDir * d, currTU.blocks[ch].y + ( 1 - edgeDir ) * d };
-        const Position  posP     = posQ.offset( -( 1 - edgeDir ), -edgeDir );
-        const Position  posPfst  = currTU.blocks[start].offset( edgeDir ? dFst : -1, edgeDir ? -1 : dFst );
-        const int sizeQSide      = perpSize<edgeDir>( currTU.blocks[ch] );
-                        cuP      = parlPos<edgeDir>( cuP->     blocks[ch   ] ) + parlSize<edgeDir>( cuP->     blocks[ch   ] ) > parlPos<edgeDir>( posP )    ? cuP      : cu.cs->getCU( posP,                 ch );
-                        cuPfstCh = start != end && ch == end && deriveBdStrngt
-                                 ? parlPos<edgeDir>( cuPfstCh->blocks[start] ) + parlSize<edgeDir>( cuPfstCh->blocks[start] ) > parlPos<edgeDir>( posPfst ) ? cuPfstCh : cu.cs->getCU( posPfst, ChannelType( start ) )
-                                 : cuP;
-        const TransformUnit &tuP = cuP->firstTU.next == nullptr ? cuP->firstTU : *getTU( *cuP, posP, ch );
-        const int sizePSide      = perpSize<edgeDir>( tuP.blocks[ch] );
-        LoopFilterParam& lfp     = *lfpPtr;
-
-        if( ct == start )
+        if( start != end )
         {
-          lfp.setFilterEdge( cu.chType(), bValue );
-          if( ( lfp.bs || perpPos<edgeDir>( currTU.blocks[ch] ) == perpPos<edgeDir>( cu.blocks[ch] ) ) && bValue )
+          for( int d = 0, dFst = 0; d < parlSize<edgeDir>( currTU.blocks[ch] );  )
           {
-            lfp.bs |= BsSet( 3, MAX_NUM_COMPONENT );
-          }
-          else
-          {
-            lfp.bs |= BsSet( 1, MAX_NUM_COMPONENT );
-          }
-        }
+            const Position  posQ     { currTU.blocks[ch].x + edgeDir * d, currTU.blocks[ch].y + ( 1 - edgeDir ) * d };
+            const Position  posP     = posQ.offset( -( 1 - edgeDir ), -edgeDir );
+            const int sizeQSide      = perpSize<edgeDir>( currTU.blocks[ch] );
+                            cuP      = parlPos<edgeDir>( cuP->blocks[ch] ) + parlSize<edgeDir>( cuP->blocks[ch] ) > parlPos<edgeDir>( posP )? cuP: cu.cs->getCU( posP, ch );
+            const Position  posPfst  = currTU.blocks[start].offset( edgeDir ? dFst : -1, edgeDir ? -1 : dFst );
+                            cuPfstCh = parlPos<edgeDir>( cuPfstCh->blocks[start] ) + parlSize<edgeDir>( cuPfstCh->blocks[start] ) > parlPos<edgeDir>( posPfst ) ? cuPfstCh : cu.cs->getCU( posPfst, ChannelType( start ) );
+            const TransformUnit &tuP = cuP->firstTU.next == nullptr ? cuP->firstTU : *getTU( *cuP, posP, ch );
+            const int sizePSide      = perpSize<edgeDir>( tuP.blocks[ch] );
+            LoopFilterParam& lfp     = *lfpPtr;
 
-        if( ch == CHANNEL_TYPE_LUMA )
-        {
-          uint8_t maxFLPQ;
+            lfp.setFilterCMFL( ( sizeQSide >= 8 && sizePSide >= 8 ) ? 1 : 0 );
+            if( bValue )
+              xGetBoundaryStrengthSingle<edgeDir>( lfp, cu, Position( ( area.x + edgeDir * d ) << csx, ( area.y + ( 1 - edgeDir ) * d ) << csy ), *cuPfstCh, ctuData, pqSameCtu );
+            lfp.bs &= ~BsSet( 3, MAX_NUM_COMPONENT );
 
-          if( lfp.sideMaxFiltLength != 0 )
-          {
-            continue;
+            if( !CU::isIntra( cu ) && !CU::isIntra( *cuP ) && cuP == cuPfstCh && cu.geoFlag() == false && cuP->geoFlag() == false )
+            {
+              int distance = parlPos<edgeDir>( tuP.blocks[ch] ) + parlSize<edgeDir>( tuP.blocks[ch] ) - parlPos<edgeDir>( posQ );
+              if( distance > parlSize<edgeDir>( currTU.blocks[ch] ) - d )
+                distance = parlSize<edgeDir>( currTU.blocks[ch] ) - d; // range check
+              if( distance > inc && !cuP->affineFlag() && !( cuP->mergeFlag() && cuP->mergeType() == MRG_TYPE_SUBPU_ATMVP ) )
+              {
+                LoopFilterParam param = lfp;
+                for( int j = inc; j < distance; j += inc, d += inc, dFst += incFst )
+                {
+                  OFFSET( lfpPtr, lfpStride, edgeDir, ( 1 - edgeDir ) );
+                  *lfpPtr = param;
+                }
+              }
+            }
+            OFFSET( lfpPtr, lfpStride, edgeDir, ( 1 - edgeDir ) );
+            d    += inc;
+            dFst += incFst;
           }
-
-          bool smallBlock = ( sizePSide <= 4 ) || ( sizeQSide <= 4 );
-          if( smallBlock )
-          {
-            maxFLPQ = 17;
-          }
-          else
-          {
-            maxFLPQ   = ( sizePSide >= 32 ) ? ( cuP->affineFlag() ? 5 : 7 ) : 3;
-            maxFLPQ <<= 4;
-            maxFLPQ  += ( sizeQSide >= 32 ) ? 7 : 3;
-          }
-
-          maxFLPQ    += 128;
-          lfp.sideMaxFiltLength = maxFLPQ;
         }
         else
         {
-          lfp.setFilterCMFL( ( sizeQSide >= 8 && sizePSide >= 8 ) ? 1 : 0 );
-        }
+          // old logical
+          for( int d = 0, dFst = 0; d < parlSize<edgeDir>( currTU.blocks[ch] ); d += inc, dFst += incFst )
+          {
+            const Position  posQ     { currTU.blocks[ch].x + edgeDir * d, currTU.blocks[ch].y + ( 1 - edgeDir ) * d };
+            const Position  posP     = posQ.offset( -( 1 - edgeDir ), -edgeDir );
+            const Position  posPfst  = currTU.blocks[start].offset( edgeDir ? dFst : -1, edgeDir ? -1 : dFst );
+            const int sizeQSide      = perpSize<edgeDir>( currTU.blocks[ch] );
+                            cuP      =                parlPos<edgeDir>( cuP->     blocks[ch   ] ) + parlSize<edgeDir>( cuP->     blocks[ch   ] ) > parlPos<edgeDir>( posP )    ? cuP      : cu.cs->getCU( posP,                 ch );
+                            cuPfstCh = start != end ? parlPos<edgeDir>( cuPfstCh->blocks[start] ) + parlSize<edgeDir>( cuPfstCh->blocks[start] ) > parlPos<edgeDir>( posPfst ) ? cuPfstCh : cu.cs->getCU( posPfst, ChannelType( start ) )
+                                                    : cuP;
+            const TransformUnit &tuP = cuP->firstTU.next == nullptr ? cuP->firstTU : *getTU( *cuP, posP, ch );
+            const int sizePSide      = perpSize<edgeDir>( tuP.blocks[ch] );
+            LoopFilterParam& lfp     = *lfpPtr;
 
-        if( ct == end && deriveBdStrngt )
+            lfp.setFilterEdge( cu.chType(), bValue );
+            if( ( lfp.bs || bSameCUTUSize ) && bValue )
+            {
+              lfp.bs |= BsSet( 3, MAX_NUM_COMPONENT );
+            }
+            else
+            {
+              lfp.bs |= BsSet( 1, MAX_NUM_COMPONENT );
+            }
+            if( ch == CHANNEL_TYPE_LUMA )
+            {
+              uint8_t maxFLPQ;
+              
+              bool smallBlock = ( sizePSide <= 4 ) || ( sizeQSide <= 4 );
+              if( smallBlock )
+              {
+                maxFLPQ = 17;
+              }
+              else
+              {
+                maxFLPQ   = ( sizePSide >= 32 ) ? ( cuP->affineFlag() ? 5 : 7 ) : 3;
+                maxFLPQ <<= 4;
+                maxFLPQ  += ( sizeQSide >= 32 ) ? 7 : 3;
+              }
+              
+              maxFLPQ    += 128;
+              lfp.sideMaxFiltLength = maxFLPQ;
+            }
+            else
+            {
+              lfp.setFilterCMFL( ( sizeQSide >= 8 && sizePSide >= 8 ) ? 1 : 0 );
+            }
+            
+            if( bValue )
+              xGetBoundaryStrengthSingle<edgeDir>( lfp, cu, Position( ( area.x + edgeDir * d ) << csx, ( area.y + ( 1 - edgeDir ) * d ) << csy ), *cuPfstCh, ctuData, pqSameCtu );
+            lfp.bs &= ~BsSet( 3, MAX_NUM_COMPONENT );
+            OFFSET( lfpPtr, lfpStride, edgeDir, ( 1 - edgeDir ) );
+          }
+        }
+      }
+      else
+      {
+        for( int d = 0; d < parlSize<edgeDir>( currTU.blocks[ch] ); )
         {
-          if( bValue ) xGetBoundaryStrengthSingle<edgeDir>( lfp, cu, Position( ( area.x + edgeDir * d ) << csx, ( area.y + ( 1 - edgeDir ) * d ) << csy ), *cuPfstCh, ctuData, pqSameCtu );
-          lfp.bs &= ~BsSet( 3, MAX_NUM_COMPONENT );
-        }
+          const Position  posQ     { currTU.blocks[ch].x + edgeDir * d, currTU.blocks[ch].y + ( 1 - edgeDir ) * d };
+          const Position  posP     = posQ.offset( -( 1 - edgeDir ), -edgeDir );
+          const int sizeQSide      = perpSize<edgeDir>( currTU.blocks[ch] );
+                          cuP      = parlPos<edgeDir>( cuP->blocks[ch] ) + parlSize<edgeDir>( cuP->blocks[ch] ) > parlPos<edgeDir>( posP )? cuP:cu.cs->getCU( posP,                 ch );
+          const TransformUnit &tuP = cuP->firstTU.next == nullptr ? cuP->firstTU : *getTU( *cuP, posP, ch );
+          const int sizePSide      = perpSize<edgeDir>( tuP.blocks[ch] );
 
-        OFFSET( lfpPtr, lfpStride, edgeDir, ( 1 - edgeDir ) );
+          int distance = parlPos<edgeDir>( tuP.blocks[ch] ) + parlSize<edgeDir>( tuP.blocks[ch] ) - parlPos<edgeDir>(posQ);
+          if( distance > parlSize<edgeDir>( currTU.blocks[ch] ) - d )
+            distance = parlSize<edgeDir>( currTU.blocks[ch] ) - d; // range check
+
+          if( ch == CHANNEL_TYPE_LUMA )
+          {
+            LoopFilterParam& lfp = *lfpPtr;
+            lfp.setFilterEdge( cu.chType(), bValue );
+            if( ( lfp.bs || bSameCUTUSize ) && bValue )
+            {
+              lfp.bs |= BsSet( 3, MAX_NUM_COMPONENT );
+            }
+            else
+            {
+              lfp.bs |= BsSet( 1, MAX_NUM_COMPONENT );
+            }
+
+            uint8_t maxFLPQ;
+            bool smallBlock = ( sizePSide <= 4 ) || ( sizeQSide <= 4 );
+            if( smallBlock )
+            {
+              maxFLPQ = 17;
+            }
+            else
+            {
+              maxFLPQ   = ( sizePSide >= 32 ) ? ( cuP->affineFlag() ? 5 : 7 ) : 3;
+              maxFLPQ <<= 4;
+              maxFLPQ  += ( sizeQSide >= 32 ) ? 7 : 3;
+            }
+            maxFLPQ    += 128;
+            lfp.sideMaxFiltLength = maxFLPQ;
+
+            if( distance > inc )
+            {
+              LoopFilterParam tmp = lfp;
+              for (int j = inc; j < distance; j += inc, d += inc)
+              {
+                OFFSET( lfpPtr, lfpStride, edgeDir, ( 1 - edgeDir ) );
+                *lfpPtr = tmp;
+              }
+            }
+            d += inc;
+            OFFSET( lfpPtr, lfpStride, edgeDir, ( 1 - edgeDir ) );
+          }
+          else
+          {
+            for( int j = 0; j < distance; j += inc, d += inc )
+            {
+              LoopFilterParam& lfp = *lfpPtr;
+              if( ct == start )
+              {
+                lfp.setFilterEdge( cu.chType(), bValue );
+                if( ( lfp.bs || bSameCUTUSize ) && bValue )
+                {
+                  lfp.bs |= BsSet( 3, MAX_NUM_COMPONENT );
+                }
+                else
+                {
+                  lfp.bs |= BsSet( 1, MAX_NUM_COMPONENT );
+                }
+              }
+              lfp.setFilterCMFL( ( sizeQSide >= 8 && sizePSide >= 8 ) ? 1 : 0 );
+              OFFSET( lfpPtr, lfpStride, edgeDir, ( 1 - edgeDir ) );
+            }
+          }
+        }
       }
     }
   }
@@ -999,45 +1009,48 @@ void LoopFilter::xSetEdgeFilterInsidePu( const CodingUnit &cu, const Area &area,
   const int inc = edgeDir ? pcv.minCUWidth  >> getChannelTypeScaleX( cu.chType(), cu.chromaFormat )
                           : pcv.minCUHeight >> getChannelTypeScaleY( cu.chType(), cu.chromaFormat );
 
-  for( int d = 0; d < parlSize<edgeDir>( area ); d += inc )
+  if (bValue)
   {
-    lfpPtr->setFilterEdge( cu.chType(), bValue );
-
-    if( lfpPtr->bs && bValue )
+    for( int d = 0; d < parlSize<edgeDir>( area ); d += inc )
     {
-      lfpPtr->bs |= BsSet( 3, MAX_NUM_COMPONENT );
+      lfpPtr->setFilterEdge( cu.chType(), 1 );
+       if( lfpPtr->bs)
+       {
+         lfpPtr->bs |= BsSet( 3, MAX_NUM_COMPONENT );
+       }
+       OFFSET( lfpPtr, lfpStride, edgeDir, ( 1 - edgeDir ) );
     }
-      
-    OFFSET( lfpPtr, lfpStride, edgeDir, ( 1 - edgeDir ) );
+  }
+  else
+  {
+    for( int d = 0; d < parlSize<edgeDir>( area ); d += inc )
+    {
+      lfpPtr->setFilterEdge( cu.chType(), 0 );
+      OFFSET( lfpPtr, lfpStride, edgeDir, ( 1 - edgeDir ) );
+    }
   }
 }
 
 LFCUParam LoopFilter::xGetLoopfilterParam( const CodingUnit& cu ) const
 {
-  const Slice& slice = *cu.slice;
-  if( slice.getDeblockingFilterDisable() )
-  {
-    return LFCUParam{/*false,*/ false, false};
-  }
-
   const Position pos = cu.blocks[cu.chType()].pos();
 
   const PPS& pps = *cu.pps;
   const SPS& sps = *cu.sps;
 
-  const CodingUnit& cuLeft  = ( pos.x > 0 && cu.left  == nullptr ) ? *cu.cs->getCU( pos.offset( -1, 0 ), cu.chType() ) : *cu.left;
-  const CodingUnit& cuAbove = ( pos.y > 0 && cu.above == nullptr ) ? *cu.cs->getCU( pos.offset( 0, -1 ), cu.chType() ) : *cu.above;
+  const CodingUnit* cuLeft  = ( pos.x > 0 && cu.left  == nullptr ) ? cu.cs->getCU( pos.offset( -1, 0 ), cu.chType() ) : cu.left;
+  const CodingUnit* cuAbove = ( pos.y > 0 && cu.above == nullptr ) ? cu.cs->getCU( pos.offset( 0, -1 ), cu.chType() ) : cu.above;
 
   const bool loopFilterAcrossSubPicEnabledFlagLeft = !sps.getSubPicInfoPresentFlag() ||
                                                      ( pps.getSubPicFromCU( cu ).getloopFilterAcrossSubPicEnabledFlag() &&
-                                                       pps.getSubPicFromCU( cuLeft ).getloopFilterAcrossSubPicEnabledFlag() );
+                                                       pps.getSubPicFromCU( *cuLeft ).getloopFilterAcrossSubPicEnabledFlag() );
   const bool loopFilterAcrossSubPicEnabledFlagTop = !sps.getSubPicInfoPresentFlag() ||
                                                     ( pps.getSubPicFromCU( cu ).getloopFilterAcrossSubPicEnabledFlag() &&
-                                                      pps.getSubPicFromCU( cuAbove ).getloopFilterAcrossSubPicEnabledFlag() );
+                                                      pps.getSubPicFromCU( *cuAbove ).getloopFilterAcrossSubPicEnabledFlag() );
 
   LFCUParam stLFCUParam;   ///< status structure
-  stLFCUParam.leftEdge = ( pos.x > 0 ) && CU::isAvailable( cu, cuLeft,  !pps.getLoopFilterAcrossSlicesEnabledFlag(), !pps.getLoopFilterAcrossTilesEnabledFlag(), !loopFilterAcrossSubPicEnabledFlagLeft );
-  stLFCUParam.topEdge  = ( pos.y > 0 ) && CU::isAvailable( cu, cuAbove, !pps.getLoopFilterAcrossSlicesEnabledFlag(), !pps.getLoopFilterAcrossTilesEnabledFlag(), !loopFilterAcrossSubPicEnabledFlagTop );
+  stLFCUParam.leftEdge = ( pos.x > 0 ) && CU::isAvailable( cu, *cuLeft,  !pps.getLoopFilterAcrossSlicesEnabledFlag(), !pps.getLoopFilterAcrossTilesEnabledFlag(), !loopFilterAcrossSubPicEnabledFlagLeft );
+  stLFCUParam.topEdge  = ( pos.y > 0 ) && CU::isAvailable( cu, *cuAbove, !pps.getLoopFilterAcrossSlicesEnabledFlag(), !pps.getLoopFilterAcrossTilesEnabledFlag(), !loopFilterAcrossSubPicEnabledFlagTop );
   return stLFCUParam;
 }
 
@@ -1094,7 +1107,7 @@ void LoopFilter::xGetBoundaryStrengthSingle( LoopFilterParam& lfp, const CodingU
   {
     const int edgeIdx = ( perpPos<edgeDir>( localPos ) - perpPos<edgeDir>( cuPos ) ) / 4;
 
-    int bsY = ( MODE_INTRA == cuP.predMode() && cuP.bdpcmMode() ) && ( MODE_INTRA == cuQ.predMode() && cuQ.bdpcmMode() ) ? 0 : 2;
+    int bsY = cuP.bdpcmMode() && cuQ.bdpcmMode()? 0 : 2;
 
     if( cuQ.ispMode() && edgeIdx )
     {
@@ -1302,7 +1315,7 @@ void LoopFilter::xGetBoundaryStrengthSingle( LoopFilterParam& lfp, const CodingU
 }
 
 #if LUMA_ADAPTIVE_DEBLOCKING_FILTER_QP_OFFSET
-void LoopFilter::deriveLADFShift( const Pel* src, const ptrdiff_t stride, int& shift, const DeblockEdgeDir edgeDir, const SPS sps ) const
+void LoopFilter::deriveLADFShift( const Pel* src, const ptrdiff_t stride, int& shift, const DeblockEdgeDir edgeDir, const SPS& sps ) const
 {
   int32_t lumaLevel = 0;
   shift = sps.getLadfQpOffset(0);
@@ -1477,8 +1490,8 @@ void LoopFilter::xEdgeFilterLuma( CodingStructure& cs, const Position& pos, cons
     sidePisLarge = false;
   }
 
-  const int iIndexTC  = Clip3( 0, MAX_QP + DEFAULT_INTRA_TC_OFFSET, int( iQP + DEFAULT_INTRA_TC_OFFSET * ( uiBs - 1 ) + ( tcOffsetDiv2 << 1 ) ) );
-  const int iIndexB   = Clip3( 0, MAX_QP, iQP + ( betaOffsetDiv2 << 1 ) );
+  const int iIndexTC  = Clip3( 0, MAX_QP + DEFAULT_INTRA_TC_OFFSET, int( iQP + DEFAULT_INTRA_TC_OFFSET * ( uiBs - 1 ) + ( tcOffsetDiv2 *2 ) ) );
+  const int iIndexB   = Clip3( 0, MAX_QP, iQP + ( betaOffsetDiv2 *2 ) );
 
   const int iTc = bitDepthLuma < 10 ? ((sm_tcTable[iIndexTC] + (1 << (9 - bitDepthLuma))) >> (10 - bitDepthLuma)) : ((sm_tcTable[iIndexTC]) << (bitDepthLuma - 10));
   const int iBeta     = sm_betaTable[iIndexB ] << ( bitDepthLuma - 8 );
@@ -1626,7 +1639,7 @@ void LoopFilter::xEdgeFilterChroma( CodingStructure &cs, const Position &pos, co
 
       int iQP = lfp.qp[chromaIdx + 1];
 
-      const int iIndexTC = Clip3<int>( 0, MAX_QP + DEFAULT_INTRA_TC_OFFSET, iQP + DEFAULT_INTRA_TC_OFFSET * ( bS[chromaIdx] - 1 ) + ( tcOffsetDiv2[chromaIdx] << 1 ) );
+      const int iIndexTC = Clip3<int>( 0, MAX_QP + DEFAULT_INTRA_TC_OFFSET, iQP + DEFAULT_INTRA_TC_OFFSET * ( bS[chromaIdx] - 1 ) + ( tcOffsetDiv2[chromaIdx] *2 ) );
       const int iTc = bitDepthChroma < 10 ? ((sm_tcTable[iIndexTC] + (1 << (9 - bitDepthChroma))) >> (10 - bitDepthChroma)) : ((sm_tcTable[iIndexTC]) << (bitDepthChroma - 10));
       Pel* piSrcChroma   = chromaIdx == 0 ? piSrcCb : piSrcCr;
 
@@ -1634,7 +1647,7 @@ void LoopFilter::xEdgeFilterChroma( CodingStructure &cs, const Position &pos, co
       {
         const int iBitdepthScale = 1 << ( bitDepthChroma - 8 );
 
-        const int indexB = Clip3<int>( 0, MAX_QP, iQP + ( betaOffsetDiv2[chromaIdx] << 1 ) );
+        const int indexB = Clip3<int>( 0, MAX_QP, iQP + ( betaOffsetDiv2[chromaIdx] *2 ) );
         const int beta   = sm_betaTable[indexB] * iBitdepthScale;
 
         const int dp0 = isChromaHorCTBBoundary ? xCalcDP<true>( piSrcChroma, offset ) : xCalcDP( piSrcChroma, offset );

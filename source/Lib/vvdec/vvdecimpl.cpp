@@ -1,45 +1,41 @@
 /* -----------------------------------------------------------------------------
-The copyright in this software is being made available under the BSD
+The copyright in this software is being made available under the Clear BSD
 License, included below. No patent rights, trademark rights and/or 
 other Intellectual Property Rights other than the copyrights concerning 
 the Software are granted under this license.
 
-For any license concerning other Intellectual Property rights than the software, 
-especially patent licenses, a separate Agreement needs to be closed. 
-For more information please contact:
+The Clear BSD License
 
-Fraunhofer Heinrich Hertz Institute
-Einsteinufer 37
-10587 Berlin, Germany
-www.hhi.fraunhofer.de/vvc
-vvc@hhi.fraunhofer.de
-
-Copyright (c) 2018-2022, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. 
+Copyright (c) 2018-2022, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVdeC Authors.
 All rights reserved.
 
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met:
+Redistribution and use in source and binary forms, with or without modification,
+are permitted (subject to the limitations in the disclaimer below) provided that
+the following conditions are met:
 
- * Redistributions of source code must retain the above copyright notice,
-   this list of conditions and the following disclaimer.
- * Redistributions in binary form must reproduce the above copyright notice,
-   this list of conditions and the following disclaimer in the documentation
-   and/or other materials provided with the distribution.
- * Neither the name of Fraunhofer nor the names of its contributors may
-   be used to endorse or promote products derived from this software without
-   specific prior written permission.
+     * Redistributions of source code must retain the above copyright notice,
+     this list of conditions and the following disclaimer.
 
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS
-BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
-THE POSSIBILITY OF SUCH DAMAGE.
+     * Redistributions in binary form must reproduce the above copyright
+     notice, this list of conditions and the following disclaimer in the
+     documentation and/or other materials provided with the distribution.
+
+     * Neither the name of the copyright holder nor the names of its
+     contributors may be used to endorse or promote products derived from this
+     software without specific prior written permission.
+
+NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY
+THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
+CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
+CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
+BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
+IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGE.
 
 
 ------------------------------------------------------------------------------------------- */
@@ -94,15 +90,19 @@ int VVDecImpl::init( const vvdecParams& params )
 #ifdef TARGET_SIMD_X86
     switch( params.simd )
     {
-    case VVDEC_SIMD_SCALAR: read_x86_extension( SCALAR ); break;
-    case VVDEC_SIMD_SSE41 : read_x86_extension( SSE41  ); break;
-    case VVDEC_SIMD_SSE42 : read_x86_extension( SSE42  ); break;
-    case VVDEC_SIMD_AVX   : read_x86_extension( AVX    ); break;
-    case VVDEC_SIMD_AVX2  : read_x86_extension( AVX2   ); break;
+    case VVDEC_SIMD_SCALAR: read_x86_extension_flags( SCALAR ); break;
+#if defined( VVDEC_ARCH_X86 )
+    case VVDEC_SIMD_SSE41 : read_x86_extension_flags( SSE41  ); break;
+    case VVDEC_SIMD_SSE42 : read_x86_extension_flags( SSE42  ); break;
+    case VVDEC_SIMD_AVX   : read_x86_extension_flags( AVX    ); break;
+    case VVDEC_SIMD_AVX2  : read_x86_extension_flags( AVX2   ); break;
+#elif defined( VVDEC_ARCH_ARM ) || defined( VVDEC_ARCH_WASM )
+    case VVDEC_SIMD_MAX   : read_x86_extension_flags( SSE42  ); break;    // SSE42 is emulated through simd-everywhere or emscripten. Using >SSE42 currently brings no advantage.
+#endif
     case VVDEC_SIMD_DEFAULT:
     default: break;
     }
-#endif
+#endif // TARGET_SIMD_X86
 
     m_cDecLib.reset( new DecLib() );
 
@@ -151,6 +151,23 @@ int VVDecImpl::uninit()
 {
   if( !m_bInitialized ){ return VVDEC_ERR_INITIALIZE; }
 
+  reset();
+
+  // destroy internal classes
+  m_cDecLib->destroy();
+  m_cDecLib.reset();
+  destroyROM();
+
+  m_bInitialized = false;
+  m_eState       = INTERNAL_STATE_UNINITIALIZED;
+
+  return VVDEC_OK;
+}
+
+int VVDecImpl::reset()
+{
+  if( !m_bInitialized ){ return VVDEC_ERR_INITIALIZE; }
+
   bool bFlushDecoder = true;
   while( bFlushDecoder)
   {
@@ -196,20 +213,18 @@ int VVDecImpl::uninit()
   }
   m_cFrameStorageMap.clear();
 
-  // destroy internal classes
-  m_cDecLib->destroy();
-  m_cDecLib.reset();
-  destroyROM();
-
-#if defined( __linux__ )
+#if defined( __linux__ ) && !defined( ANDROID )
   malloc_trim(0);
 #endif
 
-  m_bInitialized = false;
-  m_eState       = INTERNAL_STATE_UNINITIALIZED;
+  m_uiSeqNumber    = 0;
+  m_uiSeqNumOutput = 0;
+  m_eState         = INTERNAL_STATE_INITIALIZED;
 
   return VVDEC_OK;
 }
+
+
 
 void VVDecImpl::setLoggingCallback( vvdecLoggingCallback callback )
 {
@@ -219,9 +234,11 @@ void VVDecImpl::setLoggingCallback( vvdecLoggingCallback callback )
 int VVDecImpl::decode( vvdecAccessUnit& rcAccessUnit, vvdecFrame** ppcFrame )
 {
   if( !m_bInitialized )      { return VVDEC_ERR_INITIALIZE; }
-  if( m_eState == INTERNAL_STATE_FINALIZED )        { m_cErrorString = "decoder already flushed, please reinit."; return VVDEC_ERR_RESTART_REQUIRED; }
   if( m_eState == INTERNAL_STATE_RESTART_REQUIRED ) { m_cErrorString = "restart required, please reinit."; return VVDEC_ERR_RESTART_REQUIRED; }
-  if( m_eState == INTERNAL_STATE_FLUSHING )         { m_cErrorString = "decoder already received flush indication, please reinit."; return VVDEC_ERR_RESTART_REQUIRED; }
+  if( m_eState == INTERNAL_STATE_FINALIZED || m_eState == INTERNAL_STATE_FLUSHING )
+  {
+    reset();
+  }
 
   if( m_eState == INTERNAL_STATE_INITIALIZED ){ m_eState = INTERNAL_STATE_TUNING_IN; }
 
@@ -780,7 +797,7 @@ bool VVDecImpl::isNalUnitSlice( vvdecNalType t )
       || t == VVC_NAL_UNIT_CODED_SLICE_GDR;
 }
 
-int VVDecImpl::copyComp( const unsigned char* pucSrc, unsigned char* pucDest, unsigned int uiWidth, unsigned int uiHeight, int iStrideSrc, int iStrideDest, int iBytesPerSample  )
+int VVDecImpl::copyComp( const unsigned char* pucSrc, unsigned char* pucDest, unsigned int uiWidth, unsigned int uiHeight, ptrdiff_t iStrideSrc, ptrdiff_t iStrideDest, int iBytesPerSample  )
 {
   if( NULL != pucSrc && NULL != pucDest )
   {
@@ -1089,8 +1106,8 @@ int VVDecImpl::xCreateFrame( vvdecFrame& rcFrame, const CPelUnitBuf& rcPicBuf, u
   rcFrame.planes[VVDEC_CT_Y].width          = uiWidth;
   rcFrame.planes[VVDEC_CT_Y].height         = uiHeight;
   rcFrame.planes[VVDEC_CT_Y].bytesPerSample = rcBitDepths.recon[CHANNEL_TYPE_LUMA] > 8 ? 2 : 1;
-  rcFrame.planes[VVDEC_CT_Y].stride         = bCreateStorage  ? uiWidth*rcFrame.planes[VVDEC_CT_Y].bytesPerSample
-                                                              : rcPicBuf.get(COMPONENT_Y).stride * rcFrame.planes[VVDEC_CT_Y].bytesPerSample;
+  rcFrame.planes[VVDEC_CT_Y].stride         = bCreateStorage  ? uiWidth                                    * rcFrame.planes[VVDEC_CT_Y].bytesPerSample
+                                                              : (uint32_t)rcPicBuf.get(COMPONENT_Y).stride * rcFrame.planes[VVDEC_CT_Y].bytesPerSample;
 
   size_t nBufSize = 0;
   size_t nLSize   = rcFrame.planes[VVDEC_CT_Y].stride * uiHeight;
@@ -1139,8 +1156,8 @@ int VVDecImpl::xCreateFrame( vvdecFrame& rcFrame, const CPelUnitBuf& rcPicBuf, u
         }
         else
         {
-          rcFrame.planes[VVDEC_CT_U].stride         = rcPicBuf.get(COMPONENT_Cb).stride * rcFrame.planes[CHANNEL_TYPE_CHROMA].bytesPerSample;
-          rcFrame.planes[VVDEC_CT_V].stride         = rcPicBuf.get(COMPONENT_Cr).stride * rcFrame.planes[CHANNEL_TYPE_CHROMA].bytesPerSample;
+          rcFrame.planes[VVDEC_CT_U].stride         = (uint32_t)rcPicBuf.get(COMPONENT_Cb).stride * rcFrame.planes[CHANNEL_TYPE_CHROMA].bytesPerSample;
+          rcFrame.planes[VVDEC_CT_V].stride         = (uint32_t)rcPicBuf.get(COMPONENT_Cr).stride * rcFrame.planes[CHANNEL_TYPE_CHROMA].bytesPerSample;
         }
 
         nCSize = rcFrame.planes[VVDEC_CT_U].stride*uiCHeight;
@@ -1170,8 +1187,8 @@ int VVDecImpl::xCreateFrame( vvdecFrame& rcFrame, const CPelUnitBuf& rcPicBuf, u
         }
         else
         {
-          rcFrame.planes[VVDEC_CT_U].stride         = rcPicBuf.get(COMPONENT_Cb).stride * rcFrame.planes[CHANNEL_TYPE_CHROMA].bytesPerSample;
-          rcFrame.planes[VVDEC_CT_V].stride         = rcPicBuf.get(COMPONENT_Cr).stride * rcFrame.planes[CHANNEL_TYPE_CHROMA].bytesPerSample;
+          rcFrame.planes[VVDEC_CT_U].stride         = (uint32_t)rcPicBuf.get(COMPONENT_Cb).stride * rcFrame.planes[CHANNEL_TYPE_CHROMA].bytesPerSample;
+          rcFrame.planes[VVDEC_CT_V].stride         = (uint32_t)rcPicBuf.get(COMPONENT_Cr).stride * rcFrame.planes[CHANNEL_TYPE_CHROMA].bytesPerSample;
         }
 
         uint32_t nCSize = rcFrame.planes[VVDEC_CT_U].stride*uiCHeight;
@@ -1197,8 +1214,8 @@ int VVDecImpl::xCreateFrame( vvdecFrame& rcFrame, const CPelUnitBuf& rcPicBuf, u
         }
         else
         {
-          rcFrame.planes[VVDEC_CT_U].stride         = rcPicBuf.get(COMPONENT_Cb).stride * rcFrame.planes[CHANNEL_TYPE_CHROMA].bytesPerSample;
-          rcFrame.planes[VVDEC_CT_V].stride         = rcPicBuf.get(COMPONENT_Cr).stride * rcFrame.planes[CHANNEL_TYPE_CHROMA].bytesPerSample;
+          rcFrame.planes[VVDEC_CT_U].stride         = (uint32_t)rcPicBuf.get(COMPONENT_Cb).stride * rcFrame.planes[CHANNEL_TYPE_CHROMA].bytesPerSample;
+          rcFrame.planes[VVDEC_CT_V].stride         = (uint32_t)rcPicBuf.get(COMPONENT_Cr).stride * rcFrame.planes[CHANNEL_TYPE_CHROMA].bytesPerSample;
         }
 
         nBufSize = nLSize*3;

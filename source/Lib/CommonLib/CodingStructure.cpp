@@ -1,45 +1,41 @@
 /* -----------------------------------------------------------------------------
-The copyright in this software is being made available under the BSD
+The copyright in this software is being made available under the Clear BSD
 License, included below. No patent rights, trademark rights and/or 
 other Intellectual Property Rights other than the copyrights concerning 
 the Software are granted under this license.
 
-For any license concerning other Intellectual Property rights than the software, 
-especially patent licenses, a separate Agreement needs to be closed. 
-For more information please contact:
+The Clear BSD License
 
-Fraunhofer Heinrich Hertz Institute
-Einsteinufer 37
-10587 Berlin, Germany
-www.hhi.fraunhofer.de/vvc
-vvc@hhi.fraunhofer.de
-
-Copyright (c) 2018-2022, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. 
+Copyright (c) 2018-2022, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVdeC Authors.
 All rights reserved.
 
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met:
+Redistribution and use in source and binary forms, with or without modification,
+are permitted (subject to the limitations in the disclaimer below) provided that
+the following conditions are met:
 
- * Redistributions of source code must retain the above copyright notice,
-   this list of conditions and the following disclaimer.
- * Redistributions in binary form must reproduce the above copyright notice,
-   this list of conditions and the following disclaimer in the documentation
-   and/or other materials provided with the distribution.
- * Neither the name of Fraunhofer nor the names of its contributors may
-   be used to endorse or promote products derived from this software without
-   specific prior written permission.
+     * Redistributions of source code must retain the above copyright notice,
+     this list of conditions and the following disclaimer.
 
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS
-BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
-THE POSSIBILITY OF SUCH DAMAGE.
+     * Redistributions in binary form must reproduce the above copyright
+     notice, this list of conditions and the following disclaimer in the
+     documentation and/or other materials provided with the distribution.
+
+     * Neither the name of the copyright holder nor the names of its
+     contributors may be used to endorse or promote products derived from this
+     software without specific prior written permission.
+
+NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY
+THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
+CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
+CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
+BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
+IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGE.
 
 
 ------------------------------------------------------------------------------------------- */
@@ -85,7 +81,6 @@ CodingStructure::CodingStructure( CUChunkCache* cuChunkCache, TUChunkCache* tuCh
   , m_colMiMapSize ( 0 )
   , m_IBCBufferWidth( 0 )
 {
-  m_dmvrMvCacheOffset = 0;
 }
 
 void CodingStructure::destroy()
@@ -95,9 +90,6 @@ void CodingStructure::destroy()
   m_reco.destroy();
   m_rec_wrap.destroy();
 
-  m_cuCache.releaseAll();
-  m_tuCache.releaseAll();
-  
   m_virtualIBCbuf.clear();
 
   deallocTempInternals();
@@ -128,22 +120,26 @@ CodingUnit& CodingStructure::addCU( const UnitArea &unit, const ChannelType chTy
   cu->setChType  ( chType );
   cu->setTreeType( treeType );
   cu->setModeType( modeType );
-  
-  CodingUnit *prevCU = cu;
-  std::swap( m_lastCU, prevCU );
 
   const int currRsAddr = ctuRsAddr( unit.blocks[chType].pos(), chType );
-
-  if( prevCU ) prevCU->next = cu;
-
-  cu->idx = ++m_numCUs;
 
   uint32_t numCh = getNumberValidChannels( area.chromaFormat );
 
   CtuData& ctuData = getCtuData( currRsAddr );
-  cu->ctuData = &ctuData;
+  cu->ctuData      = &ctuData;
 
-  cu->predBufOff = m_predBufOffset;
+  if( !ctuData.firstCU )
+  {
+    ctuData.firstCU = cu;
+  }
+
+  cu->idx = ++ctuData.numCUs;
+
+  CodingUnit* prevCU = cu;
+  std::swap( ctuData.lastCU, prevCU );
+  if( prevCU ) prevCU->next = cu;
+
+  cu->predBufOff = ctuData.predBufOffset;
 
   for( uint32_t i = 0; i < numCh; i++ )
   {
@@ -156,11 +152,11 @@ CodingUnit& CodingStructure::addCU( const UnitArea &unit, const ChannelType chTy
 
     if( i )
     {
-      m_predBufOffset += ( cuArea << 1 );
+      ctuData.predBufOffset += ( cuArea << 1 );
     }
     else
     {
-      m_predBufOffset += cuArea;
+      ctuData.predBufOffset += cuArea;
     }
 
     const ptrdiff_t  stride = ptrdiff_t( 1 ) << m_ctuWidthLog2[i];
@@ -185,8 +181,8 @@ CodingUnit& CodingStructure::addCU( const UnitArea &unit, const ChannelType chTy
 
   if( isLuma( chType ) && unit.lheight() >= 8 && unit.lwidth()  >= 8 && unit.Y().area() >= 128 )
   {
-    pu.mvdL0SubPuOff     = m_dmvrMvCacheOffset;
-    m_dmvrMvCacheOffset += std::max<int>( 1, unit.lwidth() >> DMVR_SUBCU_WIDTH_LOG2 ) * std::max<int>( 1, unit.lheight() >> DMVR_SUBCU_HEIGHT_LOG2 );
+    pu.mvdL0SubPuOff           = ctuData.dmvrMvCacheOffset;
+    ctuData.dmvrMvCacheOffset += std::max<int>( 1, unit.lwidth() >> DMVR_SUBCU_WIDTH_LOG2 ) * std::max<int>( 1, unit.lheight() >> DMVR_SUBCU_HEIGHT_LOG2 );
   }
 
   return *cu;
@@ -212,7 +208,7 @@ TransformUnit& CodingStructure::addTU( const UnitArea &unit, const ChannelType c
     cu.lastTU       = tu;
   }
 
-  tu->idx               = ++m_numTUs;
+  tu->idx               = ++cu.ctuData->numTUs;
   tu->cu                =  &cu;
   tu->setChType         (   chType );
   tu->UnitArea::operator=(  unit );
@@ -241,30 +237,11 @@ void CodingStructure::addEmptyTUs( Partitioner &partitioner, CodingUnit& cu )
   }
 }
 
-CUTraverser CodingStructure::traverseCUs( const UnitArea& unit )
+CUTraverser CodingStructure::traverseCUs( const int ctuRsAddr )
 {
-  ChannelType lastChan  = unit.chromaFormat != CHROMA_400 ? CH_C : CH_L;
-  CodingUnit* firstCU   = getCU( unit.lumaPos(), CH_L );
-  CodingUnit* lastCU    = getCU( unit.block( getFirstComponentOfChannel( lastChan ) ).bottomRight(), lastChan );
+  CtuData& ctuData = m_ctuData[ctuRsAddr];
 
-  CHECKD( !firstCU || !lastCU || ctuRsAddr( firstCU->lumaPos(), CH_L ) != ctuRsAddr( lastCU->blocks[lastChan].pos(), lastChan ), "First CU and/or Last CU non-existent not in the same CTU!" );
-
-  if( lastCU ) lastCU = lastCU->next;
-
-  return CUTraverser( firstCU, lastCU );
-}
-
-cCUTraverser CodingStructure::traverseCUs( const UnitArea& unit ) const
-{
-  ChannelType lastChan      = unit.chromaFormat != CHROMA_400 ? CH_C : CH_L;
-  const CodingUnit* firstCU = getCU( unit.lumaPos(), CH_L );
-  const CodingUnit* lastCU  = getCU( unit.block( getFirstComponentOfChannel( lastChan ) ).bottomRight(), lastChan );
-
-  CHECKD( !firstCU || !lastCU || ctuRsAddr( firstCU->lumaPos(), CH_L ) != ctuRsAddr( lastCU->blocks[lastChan].pos(), lastChan ), "First CU and/or Last CU non-existent not in the same CTU!" );
-
-  if( lastCU ) lastCU = lastCU->next;
-
-  return cCUTraverser( firstCU, lastCU );
+  return CUTraverser( ctuData.firstCU, ctuData.lastCU->next );
 }
 
 // coding utilities
@@ -326,20 +303,12 @@ void CodingStructure::allocTempInternals()
 
 void CodingStructure::deallocTempInternals()
 {
-  m_numCUs = 0;
-  m_numTUs = 0;
-  m_lastCU = nullptr;
-
   m_cuCache.releaseAll();
   m_tuCache.releaseAll();
 }
 
 void CodingStructure::initStructData()
 {
-  m_numCUs = 0;
-  m_numTUs = 0;
-  m_lastCU = nullptr;
-
   m_cuCache.releaseAll();
   m_tuCache.releaseAll();
 
@@ -351,27 +320,40 @@ void CodingStructure::initStructData()
   m_ctuWidthLog2[0] = pcv->maxCUWidthLog2 - unitScale[CH_L].posx;
   m_ctuWidthLog2[1] = m_ctuWidthLog2[0]; // same for luma and chroma, because of the 2x2 blocks
 
-  m_dmvrMvCacheOffset = 0;
-
-  m_predBufOffset = 0;
-
   GCC_WARNING_DISABLE_class_memaccess
   memset( m_ctuData,  0, sizeof( CtuData             ) * m_ctuDataSize );
   memset( m_cuMap,    0, sizeof( CodingUnit*         ) * m_cuMapSize );
   memset( m_colMiMap, 0, sizeof( ColocatedMotionInfo ) * m_colMiMapSize );
   GCC_WARNING_RESET
-  
+
+  const ptrdiff_t ctuSampleSizeL  = pcv->maxCUHeight * pcv->maxCUWidth;
+  const ptrdiff_t ctuSampleSizeC  = isChromaEnabled( pcv->chrFormat ) ? ( ctuSampleSizeL >> ( getChannelTypeScaleX( CH_C, pcv->chrFormat) + getChannelTypeScaleY( CH_C, pcv->chrFormat ) ) ) : 0;
+  const ptrdiff_t ctuSampleSize   = ctuSampleSizeL + 2 * ctuSampleSizeC;
   const ptrdiff_t ctuCuMapSize    = pcv->num4x4CtuBlks;
   const ptrdiff_t ctuColMiMapSize = pcv->num8x8CtuBlks;
 
-  for( int i = 0; i < pcv->sizeInCtus; i++ )
-  {
-    for( int j = 0; j < 2; j++ )
-    {
-      m_ctuData[i].cuPtr[j] = &m_cuMap[( 2 * i + j ) * ctuCuMapSize];
-    }
+  hasIbcBlock.clear();
+  hasIbcBlock.resize( pcv->heightInCtus, 0 );
 
-    m_ctuData[i].colMotion = &m_colMiMap[i * ctuColMiMapSize];
+  for( int y = 0; y < pcv->heightInCtus; y++ )
+  {
+    for( int x = 0; x < pcv->widthInCtus; x++ )
+    {
+      int i = y * pcv->widthInCtus + x;
+
+      m_ctuData[i].lineIdx = y;
+      m_ctuData[i].colIdx  = x;
+      m_ctuData[i].ctuIdx  = i;
+
+      for( int j = 0; j < 2; j++ )
+      {
+        m_ctuData[i].cuPtr[j] = &m_cuMap[( 2 * i + j ) * ctuCuMapSize];
+      }
+
+      m_ctuData[i].colMotion         = &m_colMiMap[i * ctuColMiMapSize];
+      m_ctuData[i].predBufOffset     = i * ctuSampleSize;
+      m_ctuData[i].dmvrMvCacheOffset = i * pcv->num8x8CtuBlks;
+    }
   }
 }
 
@@ -491,7 +473,7 @@ const CodingUnit* CodingStructure::getCURestricted( const Position &pos, const C
   {
     cu = curCu.ctuData->cuPtr[_chType][inCtuPos( pos, _chType )];
   }
-  else if( ydiff > 0 || xdiff > ( 1 - sps->getEntropyCodingSyncEnabledFlag() ) )
+  else if( ydiff > 0 || xdiff > ( 1 - sps->getEntropyCodingSyncEnabledFlag() ) || ( ydiff == 0 && xdiff > 0 ) )
   {
     return nullptr;
   }
@@ -500,7 +482,7 @@ const CodingUnit* CodingStructure::getCURestricted( const Position &pos, const C
     cu = getCU( pos, _chType );
   }
 
-  if( !cu || cu->idx > curCu.idx ) return nullptr;
+  if( !cu || ( sameCTU && cu->idx > curCu.idx ) ) return nullptr;
   else if( sameCTU ) return cu;
 
   if( cu->slice->getIndependentSliceIdx() == curCu.slice->getIndependentSliceIdx() && cu->tileIdx == curCu.tileIdx )
@@ -562,25 +544,22 @@ void CodingStructure::initVIbcBuf( int numCtuLines, ChromaFormat chromaFormatIDC
 
 void CodingStructure::fillIBCbuffer( CodingUnit &cu, int lineIdx )
 {
-  for( TransformUnit &tu : TUTraverser( &cu.firstTU, cu.lastTU->next ) )
+  for( const CompArea &area : cu.blocks )
   {
-    for( const CompArea &area : tu.blocks )
-    {
-      if (!area.valid())
-        continue;
+    if (!area.valid())
+      continue;
 
-      const unsigned int lcuWidth = sps->getMaxCUWidth();
-      const int shiftSampleHor = getComponentScaleX(area.compID(), cu.chromaFormat);
-      const int shiftSampleVer = getComponentScaleY(area.compID(), cu.chromaFormat);
-      const int ctuSizeVerLog2 = getLog2(lcuWidth) - shiftSampleVer;
-      const int pux = area.x & ((m_IBCBufferWidth >> shiftSampleHor) - 1);
-      const int puy = area.y & (( 1 << ctuSizeVerLog2 ) - 1);
-      const CompArea dstArea = CompArea(area.compID(), Position(pux, puy), Size(area.width, area.height));
-      CPelBuf srcBuf = getRecoBuf(area);
-      PelBuf dstBuf = m_virtualIBCbuf[lineIdx].getBuf(dstArea);
+    const unsigned int lcuWidth = sps->getMaxCUWidth();
+    const int shiftSampleHor = getComponentScaleX(area.compID(), cu.chromaFormat);
+    const int shiftSampleVer = getComponentScaleY(area.compID(), cu.chromaFormat);
+    const int ctuSizeVerLog2 = getLog2(lcuWidth) - shiftSampleVer;
+    const int pux = area.x & ((m_IBCBufferWidth >> shiftSampleHor) - 1);
+    const int puy = area.y & (( 1 << ctuSizeVerLog2 ) - 1);
+    const CompArea dstArea = CompArea(area.compID(), Position(pux, puy), Size(area.width, area.height));
+    CPelBuf srcBuf = getRecoBuf(area);
+    PelBuf dstBuf = m_virtualIBCbuf[lineIdx].getBuf(dstArea);
 
-      dstBuf.copyFrom(srcBuf);
-    }
+    dstBuf.copyFrom(srcBuf);
   }
 }
 

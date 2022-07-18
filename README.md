@@ -66,7 +66,7 @@ The Fraunhofer Versatile Video Decoder (VVdeC) is a fast H.266/VVC software deco
     <td>arm64</td>
     <td>:white_check_mark:</td>
     <td>aarch64</td>
-    <td>:black_square_button:</td>
+    <td>:white_check_mark:</td>
     <td>arm64</td>
     <td>:black_square_button:</td>
     <td>Safari</td>
@@ -74,7 +74,9 @@ The Fraunhofer Versatile Video Decoder (VVdeC) is a fast H.266/VVC software deco
   </tr>
 </table>
 
-:white_check_mark: tested and works :black_square_button: needs testing (might aleady work) :x: does not work
+:white_check_mark: tested and works :black_square_button: needs testing (might already work) :x: does not work
+
+Other architectures and platforms might work, see the [Wiki](https://github.com/fraunhoferhhi/vvdec/wiki#supported-architectures).
 
 ## Information
 
@@ -99,7 +101,7 @@ Package can be installed, for example, in a root shell:
     
 ## Build
 
-VVdeC uses CMake to describe and manage the build process. A working [CMake](http://www.cmake.org/) installation is required to build the software. In the following, the basic build steps are described. Please refer to the [Wiki](https://github.com/fraunhoferhhi/vvdec/wiki/Build) for the description of all build options.
+VVdeC uses CMake to describe and manage the build process. A working [CMake](https://cmake.org/) installation is required to build the software. In the following, the basic build steps are described. Please refer to the [Wiki](https://github.com/fraunhoferhhi/vvdec/wiki/Build) for the description of all build options.
 
 ### How to build using CMake?
 
@@ -121,7 +123,7 @@ For multi-configuration projects (e.g. Visual Studio or Xcode) specify `--config
 
 ### How to build using GNU Make?
 
-On top of the CMake build system, convinence Makefile is provided to simplify the build process. To build using GNU Make please run the following:
+On top of the CMake build system, convenience Makefile is provided to simplify the build process. To build using GNU Make please run the following:
 
 ```sh
 make install-release <options>
@@ -162,6 +164,6 @@ Please see [LICENSE.txt](./LICENSE.txt) file for the terms of use of the content
 
 For more information, please contact: vvc@hhi.fraunhofer.de
 
-**Copyright (c) 2018-2022 Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V.**
+**Copyright (c) 2018-2022 Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVdeC Authors.**
 
 **All rights reserved.**

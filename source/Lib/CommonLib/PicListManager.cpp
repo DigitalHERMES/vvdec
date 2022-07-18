@@ -1,45 +1,41 @@
 /* -----------------------------------------------------------------------------
-The copyright in this software is being made available under the BSD
+The copyright in this software is being made available under the Clear BSD
 License, included below. No patent rights, trademark rights and/or 
 other Intellectual Property Rights other than the copyrights concerning 
 the Software are granted under this license.
 
-For any license concerning other Intellectual Property rights than the software, 
-especially patent licenses, a separate Agreement needs to be closed. 
-For more information please contact:
+The Clear BSD License
 
-Fraunhofer Heinrich Hertz Institute
-Einsteinufer 37
-10587 Berlin, Germany
-www.hhi.fraunhofer.de/vvc
-vvc@hhi.fraunhofer.de
-
-Copyright (c) 2018-2022, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. 
+Copyright (c) 2018-2022, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVdeC Authors.
 All rights reserved.
 
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met:
+Redistribution and use in source and binary forms, with or without modification,
+are permitted (subject to the limitations in the disclaimer below) provided that
+the following conditions are met:
 
- * Redistributions of source code must retain the above copyright notice,
-   this list of conditions and the following disclaimer.
- * Redistributions in binary form must reproduce the above copyright notice,
-   this list of conditions and the following disclaimer in the documentation
-   and/or other materials provided with the distribution.
- * Neither the name of Fraunhofer nor the names of its contributors may
-   be used to endorse or promote products derived from this software without
-   specific prior written permission.
+     * Redistributions of source code must retain the above copyright notice,
+     this list of conditions and the following disclaimer.
 
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS
-BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
-THE POSSIBILITY OF SUCH DAMAGE.
+     * Redistributions in binary form must reproduce the above copyright
+     notice, this list of conditions and the following disclaimer in the
+     documentation and/or other materials provided with the distribution.
+
+     * Neither the name of the copyright holder nor the names of its
+     contributors may be used to endorse or promote products derived from this
+     software without specific prior written permission.
+
+NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY
+THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
+CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
+CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
+BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
+IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGE.
 
 
 ------------------------------------------------------------------------------------------- */
@@ -136,7 +132,7 @@ Picture* PicListManager::getNewPicBuffer( const SPS& sps, const PPS& pps, const 
   for( PicList::iterator itPic = m_cPicList.begin(); itPic != m_cPicList.end(); ++itPic )
   {
     Picture* pic = *itPic;
-    if( pic->inProgress || pic->referenced || pic->neededForOutput || pic->lockedByApplication )
+    if( pic->progress < Picture::reconstructed || pic->referenced || pic->neededForOutput || pic->lockedByApplication )
     {
       continue;
     }
@@ -258,7 +254,7 @@ void PicListManager::applyDoneReferencePictureMarking()
 
     // mark the picture as "unused for reference" if it is not in
     // the Reference Picture List
-    CHECK( !itPic->reconstructed, "all pictures, for which we apply reference pic marking should have been reconstructed" )
+    CHECK( itPic->progress < Picture::reconstructed, "all pictures, for which we apply reference pic marking should have been reconstructed" )
     if( !isReference )
     {
       itPic->referenced = false;
@@ -275,7 +271,7 @@ Picture* PicListManager::findClosestPic( int iLostPoc )
   Picture* closestPic = nullptr;
   for( auto& rpcPic: m_cPicList )
   {
-    if( rpcPic->reconstructed && abs( rpcPic->getPOC() - iLostPoc ) < closestPoc
+    if( rpcPic->progress >= Picture::reconstructed && abs( rpcPic->getPOC() - iLostPoc ) < closestPoc
         && abs( rpcPic->getPOC() - iLostPoc ) != 0 )
     {
       closestPoc = abs( rpcPic->getPOC() - iLostPoc );
@@ -303,7 +299,7 @@ Picture* PicListManager::getNextOutputPic( uint32_t numReorderPicsHighestTid,
   bool foundOutputPic = false;
   for( auto itPic = seqStart; itPic != m_cPicList.cend(); ++itPic )
   {
-    if( !(*itPic)->reconstructed )
+    if( (*itPic)->progress < Picture::finished )
     {
       seqEnd = itPic;
       break;
@@ -342,15 +338,19 @@ Picture* PicListManager::getNextOutputPic( uint32_t numReorderPicsHighestTid,
   for( auto& p: m_cPicList )
   {
     char stateC = ' ';
-    if     ( !p->neededForOutput )                  stateC = 'o';
-    else if( p->reconstructed )                     stateC = 'X';
-    else if( p->inProgress )                        stateC = 'x';
-    else if( !p->slices[0]->parseDone.isBlocked() ) stateC = '.';
-
-    if( stateC == 'o' )
-    {
-      if( p->referenced )          stateC = 'R';
-      if( p->lockedByApplication ) stateC = 'L';
+    switch (p->progress) {
+    case Picture::parsing:        stateC = 'p'; break;
+    case Picture::parsed:         stateC = '.'; break;
+    case Picture::reconstructing: stateC = 'x'; break;
+    default:
+    case Picture::reconstructed:
+    case Picture::finished:       stateC = 'X';
+      if( !p->neededForOutput )
+      {
+        stateC = 'o';
+        if( p->lockedByApplication ) stateC = 'L';
+        else if( p->referenced )     stateC = 'R';
+      }
     }
     std::cout << p->poc << stateC << ' ';
   }
@@ -359,7 +359,7 @@ Picture* PicListManager::getNextOutputPic( uint32_t numReorderPicsHighestTid,
 //  std::cout << "range: ";
 //  for( auto& p: picRange )
 //  {
-//    std::cout << p->poc << ( p->reconstructed ? "x" : " " ) << " ";
+//    std::cout << p->poc << ( p->progress >= Picture::finished ? "x" : " " ) << " ";
 //  }
   std::cout << std::flush;
 #endif
@@ -384,12 +384,12 @@ Picture* PicListManager::getNextOutputPic( uint32_t numReorderPicsHighestTid,
   {
     for( auto& pcPic: picRange )
     {
-      if( pcPic->neededForOutput && pcPic->reconstructed )
+      if( pcPic->neededForOutput && pcPic->progress >= Picture::finished )
       {
         numPicsNotYetDisplayed++;
         dpbFullness++;
       }
-      else if( pcPic->referenced && pcPic->reconstructed )   // !reconstructed means parsing started but not decoding
+      else if( pcPic->referenced && pcPic->progress >= Picture::finished )
       {
         dpbFullness++;
       }
@@ -397,9 +397,10 @@ Picture* PicListManager::getNextOutputPic( uint32_t numReorderPicsHighestTid,
   }
 
   IF_DEBUG_PIC_ORDER( std::cout << "   " << numPicsNotYetDisplayed << '/' << numReorderPicsHighestTid << " "<< dpbFullness << '/' << maxDecPicBufferingHighestTid << "   " );
+  (void)dpbFullness;
 
   Picture * lowestPOCPic = nullptr;
-  if( numPicsNotYetDisplayed > numReorderPicsHighestTid + ( m_firstOutputPic ? m_parallelDecInst + 1 : 0 )
+  if( numPicsNotYetDisplayed > numReorderPicsHighestTid + ( m_firstOutputPic ? MAX_OUT_OF_ORDER_PICS : 0 )
 //      || dpbFullness > maxDecPicBufferingHighestTid
       || bFlush )
   {
@@ -408,7 +409,7 @@ Picture* PicListManager::getNextOutputPic( uint32_t numReorderPicsHighestTid,
     {
       //CHECK( pcPic->fieldPic, "Interlaced not suported" );
 
-      if( pcPic->neededForOutput && pcPic->reconstructed &&
+      if( pcPic->neededForOutput && pcPic->progress >= Picture::finished &&
           ( lowestPOCPic==nullptr || pcPic->poc < lowestPOCPic->poc ) )
       {
         lowestPOCPic = pcPic;

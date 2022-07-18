@@ -27,6 +27,8 @@ endif
 CONFIG_OPTIONS += -G '$(CMAKE_GENERATOR_CUSTOM)'
 endif
 
+CONFIG_OPTIONS += -DVVDEC_TOPLEVEL_OUTPUT_DIRS=ON
+
 ifneq ($(verbose),)
 CONFIG_OPTIONS += -DCMAKE_VERBOSE_MAKEFILE=ON
 endif
@@ -61,6 +63,14 @@ endif
 
 ifneq ($(toolchainfile),)
 CONFIG_OPTIONS += -DCMAKE_TOOLCHAIN_FILE=$(toolchainfile)
+endif
+
+ifneq ($(address-sanitizer),)
+CONFIG_OPTIONS += -DVVDEC_USE_ADDRESS_SANITIZER=$(address-sanitizer)
+endif
+
+ifneq ($(thread-sanitizer),)
+CONFIG_OPTIONS += -DVVDEC_USE_THREAD_SANITIZER=$(thread-sanitizer)
 endif
 
 ifeq ($(j),)

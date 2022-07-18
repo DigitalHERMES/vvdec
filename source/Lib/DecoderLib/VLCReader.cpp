@@ -1,45 +1,41 @@
 /* -----------------------------------------------------------------------------
-The copyright in this software is being made available under the BSD
-License, included below. No patent rights, trademark rights and/or
-other Intellectual Property Rights other than the copyrights concerning
+The copyright in this software is being made available under the Clear BSD
+License, included below. No patent rights, trademark rights and/or 
+other Intellectual Property Rights other than the copyrights concerning 
 the Software are granted under this license.
 
-For any license concerning other Intellectual Property rights than the software,
-especially patent licenses, a separate Agreement needs to be closed.
-For more information please contact:
+The Clear BSD License
 
-Fraunhofer Heinrich Hertz Institute
-Einsteinufer 37
-10587 Berlin, Germany
-www.hhi.fraunhofer.de/vvc
-vvc@hhi.fraunhofer.de
-
-Copyright (c) 2018-2022, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V.
+Copyright (c) 2018-2022, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVdeC Authors.
 All rights reserved.
 
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met:
+Redistribution and use in source and binary forms, with or without modification,
+are permitted (subject to the limitations in the disclaimer below) provided that
+the following conditions are met:
 
- * Redistributions of source code must retain the above copyright notice,
-   this list of conditions and the following disclaimer.
- * Redistributions in binary form must reproduce the above copyright notice,
-   this list of conditions and the following disclaimer in the documentation
-   and/or other materials provided with the distribution.
- * Neither the name of Fraunhofer nor the names of its contributors may
-   be used to endorse or promote products derived from this software without
-   specific prior written permission.
+     * Redistributions of source code must retain the above copyright notice,
+     this list of conditions and the following disclaimer.
 
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS
-BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
-THE POSSIBILITY OF SUCH DAMAGE.
+     * Redistributions in binary form must reproduce the above copyright
+     notice, this list of conditions and the following disclaimer in the
+     documentation and/or other materials provided with the distribution.
+
+     * Neither the name of the copyright holder nor the names of its
+     contributors may be used to endorse or promote products derived from this
+     software without specific prior written permission.
+
+NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY
+THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
+CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
+CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
+BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
+IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGE.
 
 
 ------------------------------------------------------------------------------------------- */
@@ -341,7 +337,7 @@ void HLSyntaxReader::parseRefPicList( ReferencePictureList* rpl, int rplIdx, con
   rpl->setNumberOfInterLayerPictures( numIlrp );
 }
 
-void HLSyntaxReader::parsePPS( PPS* pcPPS, ParameterSetManager *parameterSetManager )
+void HLSyntaxReader::parsePPS( PPS* pcPPS, const ParameterSetManager *parameterSetManager )
 {
 #if ENABLE_TRACING
   xTracePPSHeader ();
@@ -792,7 +788,38 @@ void HLSyntaxReader::parsePPS( PPS* pcPPS, ParameterSetManager *parameterSetMana
 
   xReadRbspTrailingBits();
 
+  if( pcPPS->getPicWidthInLumaSamples() == pcSPS->getMaxPicWidthInLumaSamples() && pcPPS->getPicHeightInLumaSamples() == pcSPS->getMaxPicHeightInLumaSamples() )
+  {
+    CHECK( pcPPS->getConformanceWindowPresentFlag(),
+      "When pps_pic_width_in_luma_samples is equal to sps_pic_width_max_in_luma_samples and "
+      "pps_pic_height_in_luma_samples is equal to sps_pic_height_max_in_luma_samples, the value of "
+      "pps_conformance_window_flag shall be equal to 0" );
+
+    pcPPS->setConformanceWindow( pcSPS->getConformanceWindow() );
+
+    if( !pcPPS->getScalingWindow().getWindowEnabledFlag() )
+    {
+      pcPPS->setScalingWindow( pcPPS->getConformanceWindow() );
+    }
+  }
+
   pcPPS->finalizePPSPartitioning( pcSPS );
+
+  // set wraparound offset from PPS and SPS info
+  int minCbSizeY = ( 1 << pcSPS->getLog2MinCodingBlockSize() );
+  CHECK( !pcSPS->getUseWrapAround() && pcPPS->getUseWrapAround(), "When sps_ref_wraparound_enabled_flag is equal to 0, the value of pps_ref_wraparound_enabled_flag shall be equal to 0." );
+  CHECK( ( ( ( pcSPS->getCTUSize() / minCbSizeY ) + 1 ) > ( ( pcPPS->getPicWidthInLumaSamples() / minCbSizeY ) - 1 ) ) && pcPPS->getUseWrapAround(), "When the value of CtbSizeY / MinCbSizeY + 1 is greater than pic_width_in_luma_samples / MinCbSizeY - 1, the value of pps_ref_wraparound_enabled_flag shall be equal to 0." );
+  if( pcPPS->getUseWrapAround() )
+  {
+    CHECK( ( pcPPS->getPicWidthMinusWrapAroundOffset() > ( pcPPS->getPicWidthInLumaSamples() / minCbSizeY - pcSPS->getCTUSize() / minCbSizeY - 2 ) ), "pps_pic_width_minus_wraparound_ofsfet shall be less than or equal to pps_pic_width_in_luma_samples/MinCbSizeY - CtbSizeY/MinCbSizeY-2" );
+    pcPPS->setWrapAroundOffset( minCbSizeY * ( pcPPS->getPicWidthInLumaSamples() / minCbSizeY - pcPPS->getPicWidthMinusWrapAroundOffset() ) );
+  }
+  else
+  {
+    pcPPS->setWrapAroundOffset( 0 );
+  }
+
+  pcPPS->pcv = std::make_unique<PreCalcValues>( *pcSPS, *pcPPS );
 }
 
 void HLSyntaxReader::parseAPS( APS* aps )
@@ -1251,7 +1278,7 @@ void HLSyntaxReader::parseExtraSHBitsStruct( SPS *sps, int numBytes )
   sps->setExtraSHBitPresentFlags( presentFlags );
 }
 
-void HLSyntaxReader::parseSPS( SPS* pcSPS, ParameterSetManager *parameterSetManager )
+void HLSyntaxReader::parseSPS( SPS* pcSPS, const ParameterSetManager *parameterSetManager )
 {
 #if ENABLE_TRACING
   xTraceSPSHeader ();
@@ -1260,7 +1287,7 @@ void HLSyntaxReader::parseSPS( SPS* pcSPS, ParameterSetManager *parameterSetMana
   uint32_t uiCode = 0;
 
   READ_CODE( 4, uiCode, "sps_seq_parameter_set_id" );                        pcSPS->setSPSId( uiCode );
-  READ_CODE( 4, uiCode, "sps_video_parameter_set_id" );                      pcSPS->setVPSId( uiCode );
+  READ_CODE( 4, uiCode, "sps_video_parameter_set_id" );                      int vpsId = uiCode; //pcSPS->setVPSId( vpsId ); // TODO: change to support VPS
   READ_CODE( 3, uiCode, "sps_max_sub_layers_minus1" );                       pcSPS->setMaxTLayers( uiCode + 1 );
   CHECK( uiCode > 6, "Invalid maximum number of T-layer signalled" );
   READ_CODE( 2, uiCode, "sps_chroma_format_idc" );                           pcSPS->setChromaFormatIdc( ChromaFormat( uiCode ) );
@@ -1272,7 +1299,7 @@ void HLSyntaxReader::parseSPS( SPS* pcSPS, ParameterSetManager *parameterSetMana
   pcSPS->setMaxCUHeight( pcSPS->getCTUSize() );
   READ_FLAG( uiCode, "sps_ptl_dpb_hrd_params_present_flag" );                pcSPS->setPtlDpbHrdParamsPresentFlag( uiCode );
 
-  if( !pcSPS->getVPSId() )
+  if( !vpsId )
   {
     CHECK( !pcSPS->getPtlDpbHrdParamsPresentFlag(), "When sps_video_parameter_set_id is equal to 0, the value of sps_ptl_dpb_hrd_params_present_flag shall be equal to 1" );
   }
@@ -1330,7 +1357,9 @@ void HLSyntaxReader::parseSPS( SPS* pcSPS, ParameterSetManager *parameterSetMana
   if( pcSPS->getSubPicInfoPresentFlag() )
   {
     READ_UVLC( uiCode, "sps_num_subpics_minus1" );                           pcSPS->setNumSubPics( uiCode + 1 );
-    CHECK( uiCode > ( pcSPS->getMaxPicWidthInLumaSamples() / ( 1 << pcSPS->getCTUSize() ) ) * ( pcSPS->getMaxPicHeightInLumaSamples() / ( 1 << pcSPS->getCTUSize() ) ) - 1, "Invalid sps_num_subpics_minus1 value" );
+    CHECK( uiCode > ( ( pcSPS->getMaxPicWidthInLumaSamples()  + pcSPS->getCTUSize() - 1 ) / ( pcSPS->getCTUSize() ) ) *
+                    ( ( pcSPS->getMaxPicHeightInLumaSamples() + pcSPS->getCTUSize() - 1 ) / ( pcSPS->getCTUSize() ) ) - 1,
+           "Invalid sps_num_subpics_minus1 value" );
     if( pcSPS->getNumSubPics() == 1 )
     {
       pcSPS->setSubPicCtuTopLeftX( 0, 0 );
@@ -1628,7 +1657,7 @@ void HLSyntaxReader::parseSPS( SPS* pcSPS, ParameterSetManager *parameterSetMana
   READ_FLAG( uiCode, "sps_weighted_bipred_flag" );                           pcSPS->setUseWPBiPred( uiCode ? true : false );
 
   READ_FLAG( uiCode, "sps_long_term_ref_pics_flag" );                        pcSPS->setLongTermRefsPresent( uiCode );
-  if( pcSPS->getVPSId() > 0 )
+  if( vpsId > 0 )
   {
     READ_FLAG( uiCode, "sps_inter_layer_ref_pics_present_flag" );            pcSPS->setInterLayerPresentFlag( uiCode );
   }
@@ -2335,7 +2364,7 @@ void HLSyntaxReader::parseVPS( VPS* pcVPS )
   xReadRbspTrailingBits();
 }
 
-void HLSyntaxReader::parsePictureHeader( PicHeader* picHeader, ParameterSetManager *parameterSetManager, bool readRbspTrailingBits )
+void HLSyntaxReader::parsePictureHeader( PicHeader* picHeader, const ParameterSetManager *parameterSetManager, bool readRbspTrailingBits )
 {
   uint32_t uiCode = 0;
   int      iCode  = 0;
@@ -2366,10 +2395,10 @@ void HLSyntaxReader::parsePictureHeader( PicHeader* picHeader, ParameterSetManag
   CHECK( picHeader->getPicInterSliceAllowedFlag() == 0 && picHeader->getPicIntraSliceAllowedFlag() == 0, "Invalid picture without intra or inter slice" );
   // parameter sets
   READ_UVLC( uiCode, "ph_pic_parameter_set_id" );                            picHeader->setPPSId( uiCode );
-  PPS* pps = parameterSetManager->getPPS( picHeader->getPPSId() );
+  const PPS* pps = parameterSetManager->getPPS( picHeader->getPPSId() );
   CHECK( pps == 0, "Invalid PPS" );
   picHeader->setSPSId( pps->getSPSId() );
-  SPS* sps = parameterSetManager->getSPS( picHeader->getSPSId() );
+  const SPS* sps = parameterSetManager->getSPS( picHeader->getSPSId() );
   CHECK( sps == 0, "Invalid SPS" );
   READ_CODE( sps->getBitsForPOC(), uiCode, "ph_pic_order_cnt_lsb" );         picHeader->setPocLsb( uiCode );
   if( picHeader->getGdrPicFlag() )
@@ -2516,38 +2545,6 @@ void HLSyntaxReader::parsePictureHeader( PicHeader* picHeader, ParameterSetManag
   {
     picHeader->setExplicitScalingListEnabledFlag( false );
   }
-
-  if( pps->getPicWidthInLumaSamples() == sps->getMaxPicWidthInLumaSamples() && pps->getPicHeightInLumaSamples() == sps->getMaxPicHeightInLumaSamples() )
-  {
-    CHECK( pps->getConformanceWindowPresentFlag(),
-           "When pps_pic_width_in_luma_samples is equal to sps_pic_width_max_in_luma_samples and "
-           "pps_pic_height_in_luma_samples is equal to sps_pic_height_max_in_luma_samples, the value of "
-           "pps_conformance_window_flag shall be equal to 0" );
-
-    pps->setConformanceWindow( sps->getConformanceWindow() );
-
-    if( !pps->getScalingWindow().getWindowEnabledFlag() )
-    {
-      pps->setScalingWindow( pps->getConformanceWindow() );
-    }
-  }
-
-  pps->checkPPSPartitioningFinalized();
-
-  // set wraparound offset from PPS and SPS info
-  int minCbSizeY = ( 1 << sps->getLog2MinCodingBlockSize() );
-  CHECK( !sps->getUseWrapAround() && pps->getUseWrapAround(), "When sps_ref_wraparound_enabled_flag is equal to 0, the value of pps_ref_wraparound_enabled_flag shall be equal to 0." );
-  CHECK( ( ( ( sps->getCTUSize() / minCbSizeY ) + 1 ) > ( ( pps->getPicWidthInLumaSamples() / minCbSizeY ) - 1 ) ) && pps->getUseWrapAround(), "When the value of CtbSizeY / MinCbSizeY + 1 is greater than pic_width_in_luma_samples / MinCbSizeY - 1, the value of pps_ref_wraparound_enabled_flag shall be equal to 0." );
-  if( pps->getUseWrapAround() )
-  {
-    CHECK( ( pps->getPicWidthMinusWrapAroundOffset() > ( pps->getPicWidthInLumaSamples() / minCbSizeY - sps->getCTUSize() / minCbSizeY - 2 ) ), "pps_pic_width_minus_wraparound_ofsfet shall be less than or equal to pps_pic_width_in_luma_samples/MinCbSizeY - CtbSizeY/MinCbSizeY-2" );
-    pps->setWrapAroundOffset( minCbSizeY * ( pps->getPicWidthInLumaSamples() / minCbSizeY - pps->getPicWidthMinusWrapAroundOffset() ) );
-  }
-  else
-  {
-    pps->setWrapAroundOffset( 0 );
-  }
-
 
   // virtual boundaries
   if( sps->getVirtualBoundariesEnabledFlag() && !sps->getVirtualBoundariesPresentFlag() )
@@ -3007,13 +3004,13 @@ void HLSyntaxReader::parsePictureHeader( PicHeader* picHeader, ParameterSetManag
   }
 }
 
-void HLSyntaxReader::checkAlfNaluTidAndPicTid( const Slice* pcSlice, const PicHeader* picHeader, ParameterSetManager *parameterSetManager )
+void HLSyntaxReader::checkAlfNaluTidAndPicTid( const Slice* pcSlice, const PicHeader* picHeader, const ParameterSetManager *parameterSetManager )
 {
   const SPS* sps = parameterSetManager->getSPS(picHeader->getSPSId());
   const PPS* pps = parameterSetManager->getPPS(picHeader->getPPSId());
 
   int  curPicTid = pcSlice->getTLayer();
-  APS* aps       = nullptr;
+  const APS* aps = nullptr;
 
   if( sps->getUseALF() && pps->getAlfInfoInPhFlag() && picHeader->getAlfEnabledFlag( COMPONENT_Y ) )
   {
@@ -3080,7 +3077,7 @@ void HLSyntaxReader::checkAlfNaluTidAndPicTid( const Slice* pcSlice, const PicHe
 
 void HLSyntaxReader::parseSliceHeader( Slice*               pcSlice,
                                        PicHeader*           picHeader,
-                                       ParameterSetManager* parameterSetManager,
+                                       const ParameterSetManager* parameterSetManager,
                                        const int            prevTid0POC,
                                        Picture*             parsePic,
                                        bool&                firstSliceInPic )
@@ -3296,7 +3293,7 @@ void HLSyntaxReader::parseSliceHeader( Slice*               pcSlice,
   if( sps->getUseALF() && !pps->getAlfInfoInPhFlag() )
   {
     READ_FLAG( uiCode, "sh_alf_enabled_flag" );
-    pcSlice->setTileGroupAlfEnabledFlag( COMPONENT_Y, uiCode );
+    pcSlice->setAlfEnabledFlag( COMPONENT_Y, uiCode );
     int alfCbEnabledFlag = 0;
     int alfCrEnabledFlag = 0;
 
@@ -3304,18 +3301,18 @@ void HLSyntaxReader::parseSliceHeader( Slice*               pcSlice,
     {
       READ_CODE( 3, uiCode, "sh_num_alf_aps_ids_luma" );
       int numAps = uiCode;
-      pcSlice->setTileGroupNumAps( numAps );
+      pcSlice->setNumAlfAps( numAps );
       std::vector<int> apsId( numAps, -1) ;
       for( int i = 0; i < numAps; i++ )
       {
         READ_CODE( 3, uiCode, "sh_alf_aps_id_luma[i]" );
         apsId[i] = uiCode;
-        APS* APStoCheckLuma = parameterSetManager->getAPS( apsId[i], ALF_APS );
+        const APS* APStoCheckLuma = parameterSetManager->getAPS( apsId[i], ALF_APS );
         CHECK( APStoCheckLuma == nullptr, "referenced APS not found" );
         CHECK( APStoCheckLuma->getAlfAPSParam().newFilterFlag[CHANNEL_TYPE_LUMA] != 1, "bitstream conformance error, alf_luma_filter_signal_flag shall be equal to 1" );
       }
 
-      pcSlice->setAlfAPSids( apsId );
+      pcSlice->setAlfApsIdLuma( apsId );
 
       if( bChroma )
       {
@@ -3330,47 +3327,47 @@ void HLSyntaxReader::parseSliceHeader( Slice*               pcSlice,
       if( alfCbEnabledFlag || alfCrEnabledFlag )
       {
         READ_CODE( 3, uiCode, "sh_alf_aps_id_chroma" );
-        pcSlice->setTileGroupApsIdChroma( uiCode );
-        APS* APStoCheckChroma = parameterSetManager->getAPS( uiCode, ALF_APS );
+        pcSlice->setAlfApsIdChroma( uiCode );
+        const APS* APStoCheckChroma = parameterSetManager->getAPS( uiCode, ALF_APS );
         CHECK( APStoCheckChroma == nullptr, "referenced APS not found" );
         CHECK( APStoCheckChroma->getAlfAPSParam().newFilterFlag[CHANNEL_TYPE_CHROMA] != 1, "bitstream conformance error, alf_chroma_filter_signal_flag shall be equal to 1" );
       }
     }
     else
     {
-      pcSlice->setTileGroupNumAps( 0 );
+      pcSlice->setNumAlfAps( 0 );
     }
-    pcSlice->setTileGroupAlfEnabledFlag( COMPONENT_Cb, alfCbEnabledFlag );
-    pcSlice->setTileGroupAlfEnabledFlag( COMPONENT_Cr, alfCrEnabledFlag );
+    pcSlice->setAlfEnabledFlag( COMPONENT_Cb, alfCbEnabledFlag );
+    pcSlice->setAlfEnabledFlag( COMPONENT_Cr, alfCrEnabledFlag );
 
-    if( sps->getUseCCALF() && pcSlice->getTileGroupAlfEnabledFlag( COMPONENT_Y ) )
+    if( sps->getUseCCALF() && pcSlice->getAlfEnabledFlag( COMPONENT_Y ) )
     {
       READ_FLAG( uiCode, "sh_alf_cc_cb_enabled_flag" );
-      pcSlice->setTileGroupCcAlfCbEnabledFlag( uiCode );
-      pcSlice->setTileGroupCcAlfCbApsId( -1 );
+      pcSlice->setCcAlfCbEnabledFlag( uiCode );
+      pcSlice->setCcAlfCbApsId( -1 );
       if( uiCode )
       {
         // parse APS ID
         READ_CODE( 3, uiCode, "sh_cc_alf_cb_aps_id" );
-        pcSlice->setTileGroupCcAlfCbApsId( uiCode );
+        pcSlice->setCcAlfCbApsId( uiCode );
       }
       // Cr
       READ_FLAG(uiCode, "sh_alf_cc_cr_enabled_flag" );
-      pcSlice->setTileGroupCcAlfCrEnabledFlag( uiCode );
-      pcSlice->setTileGroupCcAlfCrApsId(-1);
+      pcSlice->setCcAlfCrEnabledFlag( uiCode );
+      pcSlice->setCcAlfCrApsId(-1);
       if( uiCode )
       {
         // parse APS ID
         READ_CODE( 3, uiCode, "sh_cc_alf_cr_aps_id" );
-        pcSlice->setTileGroupCcAlfCrApsId( uiCode );
+        pcSlice->setCcAlfCrApsId( uiCode );
       }
     }
     else
     {
-      pcSlice->setTileGroupCcAlfCbEnabledFlag( 0 );
-      pcSlice->setTileGroupCcAlfCrEnabledFlag( 0 );
-      pcSlice->setTileGroupCcAlfCbApsId( -1 );
-      pcSlice->setTileGroupCcAlfCrApsId( -1 );
+      pcSlice->setCcAlfCbEnabledFlag( 0 );
+      pcSlice->setCcAlfCrEnabledFlag( 0 );
+      pcSlice->setCcAlfCbApsId( -1 );
+      pcSlice->setCcAlfCrApsId( -1 );
     }
   }
   if( picHeader->getLmcsEnabledFlag() && !pcSlice->getPictureHeaderInSliceHeader() )

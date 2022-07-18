@@ -1,45 +1,41 @@
 /* -----------------------------------------------------------------------------
-The copyright in this software is being made available under the BSD
+The copyright in this software is being made available under the Clear BSD
 License, included below. No patent rights, trademark rights and/or 
 other Intellectual Property Rights other than the copyrights concerning 
 the Software are granted under this license.
 
-For any license concerning other Intellectual Property rights than the software, 
-especially patent licenses, a separate Agreement needs to be closed. 
-For more information please contact:
+The Clear BSD License
 
-Fraunhofer Heinrich Hertz Institute
-Einsteinufer 37
-10587 Berlin, Germany
-www.hhi.fraunhofer.de/vvc
-vvc@hhi.fraunhofer.de
-
-Copyright (c) 2018-2022, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. 
+Copyright (c) 2018-2022, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVdeC Authors.
 All rights reserved.
 
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met:
+Redistribution and use in source and binary forms, with or without modification,
+are permitted (subject to the limitations in the disclaimer below) provided that
+the following conditions are met:
 
- * Redistributions of source code must retain the above copyright notice,
-   this list of conditions and the following disclaimer.
- * Redistributions in binary form must reproduce the above copyright notice,
-   this list of conditions and the following disclaimer in the documentation
-   and/or other materials provided with the distribution.
- * Neither the name of Fraunhofer nor the names of its contributors may
-   be used to endorse or promote products derived from this software without
-   specific prior written permission.
+     * Redistributions of source code must retain the above copyright notice,
+     this list of conditions and the following disclaimer.
 
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS
-BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
-THE POSSIBILITY OF SUCH DAMAGE.
+     * Redistributions in binary form must reproduce the above copyright
+     notice, this list of conditions and the following disclaimer in the
+     documentation and/or other materials provided with the distribution.
+
+     * Neither the name of the copyright holder nor the names of its
+     contributors may be used to endorse or promote products derived from this
+     software without specific prior written permission.
+
+NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY
+THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
+CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
+CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
+BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
+IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGE.
 
 
 ------------------------------------------------------------------------------------------- */
@@ -75,7 +71,7 @@ void updateParameterSetChangedFlag( bool&                       bChanged,
   bChanged = (*pNewData != *pOldData);
 }
 
-ParameterSetManager::ActivePSs ParameterSetManager::xActivateParameterSets( const Slice* pSlicePilot, const PicHeader* picHeader )
+ParameterSetManager::ActivePSs ParameterSetManager::xActivateParameterSets( const bool isFirstSlice, const Slice* pSlicePilot, const PicHeader* picHeader )
 {
   PPS* pps = getPPS( picHeader->getPPSId() );
   CHECK( pps == 0, "No PPS present" );
@@ -83,34 +79,31 @@ ParameterSetManager::ActivePSs ParameterSetManager::xActivateParameterSets( cons
   SPS* sps = getSPS( pps->getSPSId() );
   CHECK( sps == 0, "No SPS present" );
 
-  if( !pps->pcv )
-  {
-    pps->pcv = std::make_unique<PreCalcValues>( *sps, *pps );
-  }
-  else
+  if( isFirstSlice )
   {
     CHECK( !pps->pcv->isCorrect( *sps, *pps ), "PPS has PCV already, but values chaged???" );
+
+    sps->clearChangedFlag();
+    pps->clearChangedFlag();
+
+    if( false == activatePPS( picHeader->getPPSId(), pSlicePilot->isIRAP() ) )
+    {
+      THROW_RECOVERABLE( "Parameter set activation failed!" );
+    }
+
+    m_alfAPSs.fill( nullptr );
+    m_apsMap.clearActive();
   }
 
-  sps->clearChangedFlag();
-  pps->clearChangedFlag();
-
-  if( false == activatePPS( picHeader->getPPSId(), pSlicePilot->isIRAP() ) )
-  {
-    THROW_RECOVERABLE( "Parameter set activation failed!" );
-  }
-
-  m_alfAPSs.fill( nullptr );
-  m_apsMap.clearActive();
   // luma APSs
-  for( int i = 0; i < pSlicePilot->getTileGroupApsIdLuma().size(); i++ )
+  for( int i = 0; i < pSlicePilot->getAlfApsIdLuma().size(); i++ )
   {
-    int apsId = pSlicePilot->getTileGroupApsIdLuma()[i];
-    APS* alfApsL = getAPS( apsId, ALF_APS );
+    int apsId = pSlicePilot->getAlfApsIdLuma()[i];
+    APS *alfApsL = getAPS( apsId, ALF_APS );
 
     if( alfApsL )
     {
-      alfApsL->clearChangedFlag();
+      if( isFirstSlice ) alfApsL->clearChangedFlag();
       m_alfAPSs[apsId] = alfApsL;
       if( false == activateAPS( apsId, ALF_APS ) )
       {
@@ -124,14 +117,14 @@ ParameterSetManager::ActivePSs ParameterSetManager::xActivateParameterSets( cons
     }
   }
 
-  if( pSlicePilot->getTileGroupAlfEnabledFlag( COMPONENT_Cb ) || pSlicePilot->getTileGroupAlfEnabledFlag( COMPONENT_Cr ) )
+  if( pSlicePilot->getAlfEnabledFlag( COMPONENT_Cb ) || pSlicePilot->getAlfEnabledFlag( COMPONENT_Cr ) )
   {
     // chroma APS
-    int apsId = pSlicePilot->getTileGroupApsIdChroma();
-    APS* alfApsC = getAPS( apsId, ALF_APS );
+    int apsId = pSlicePilot->getAlfApsIdChroma();
+    APS* alfApsC = getAPS( apsId , ALF_APS );
     if( alfApsC )
     {
-      alfApsC->clearChangedFlag();
+      if( isFirstSlice ) alfApsC->clearChangedFlag();
       m_alfAPSs[apsId] = alfApsC;
       if( false == activateAPS( apsId, ALF_APS ) )
       {
@@ -141,11 +134,11 @@ ParameterSetManager::ActivePSs ParameterSetManager::xActivateParameterSets( cons
              "When sps_ccalf_enabled_flag is 0, the values of alf_cc_cb_filter_signal_flag and alf_cc_cr_filter_signal_flag shall be equal to 0" );
     }
   }
-  if( pSlicePilot->getTileGroupCcAlfCbEnabledFlag() )
+  if( pSlicePilot->getCcAlfCbEnabledFlag() )
   {
-    if( !m_alfAPSs[pSlicePilot->getTileGroupCcAlfCbApsId()] )
+    if( !m_alfAPSs[pSlicePilot->getCcAlfCbApsId()] )
     {
-      int apsId = pSlicePilot->getTileGroupCcAlfCbApsId();
+      int apsId = pSlicePilot->getCcAlfCbApsId();
       APS *aps = getAPS( apsId, ALF_APS );
       if( aps )
       {
@@ -159,11 +152,11 @@ ParameterSetManager::ActivePSs ParameterSetManager::xActivateParameterSets( cons
     }
   }
 
-  if( pSlicePilot->getTileGroupCcAlfCrEnabledFlag() )
+  if( pSlicePilot->getCcAlfCrEnabledFlag() )
   {
-    if( !m_alfAPSs[pSlicePilot->getTileGroupCcAlfCrApsId()] )
+    if( !m_alfAPSs[pSlicePilot->getCcAlfCrApsId()] )
     {
-      int apsId = pSlicePilot->getTileGroupCcAlfCrApsId();
+      int apsId = pSlicePilot->getCcAlfCrApsId();
       APS *aps = getAPS( apsId, ALF_APS );
       if( aps )
       {
@@ -185,7 +178,7 @@ ParameterSetManager::ActivePSs ParameterSetManager::xActivateParameterSets( cons
 
   if( lmcsAPS )
   {
-    lmcsAPS->clearChangedFlag();
+    if( isFirstSlice ) lmcsAPS->clearChangedFlag();
     if( false == activateAPS( picHeader->getLmcsAPSId(), LMCS_APS ) )
     {
       THROW( "LMCS APS activation failed!" );
@@ -206,7 +199,7 @@ ParameterSetManager::ActivePSs ParameterSetManager::xActivateParameterSets( cons
 
   if( scalingListAPS )
   {
-    scalingListAPS->clearChangedFlag();
+    if( isFirstSlice ) scalingListAPS->clearChangedFlag();
 
     if( false == activateAPS( picHeader->getScalingListAPSId(), SCALING_LIST_APS ) )
     {
