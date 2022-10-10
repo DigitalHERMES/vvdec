@@ -1,9 +1,9 @@
 Source: vvdec
 Section: video
 Priority: optional
-Maintainer: Christian Marillat <marillat@deb-multimedia.org>
-Bugs: mailto:marillat@deb-multimedia.org
-Homepage: https://github.com/fraunhoferhhi/vvenc/releases
+Maintainer: Rafael Diniz <rafael@rhizomatica.org>
+Bugs: mailto:rafael@rhizomatica.org
+Homepage: https://github.com/Rhizomatica/vvdec
 Rules-Requires-Root: no
 Standards-Version: 4.5.1
 Build-Depends: debhelper-compat (= 13), cmake (>= 3.13.0~), ninja-build, quilt

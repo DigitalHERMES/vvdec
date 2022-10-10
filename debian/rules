@@ -15,17 +15,17 @@ override_dh_auto_configure:
 	-DVVDEC_ENABLE_INSTALL=ON \
 	-DCMAKE_SKIP_INSTALL_RPATH=ON \
 	-DVVDEC_ENABLE_LINK_TIME_OPT=OFF \
-	-DCMAKE_BUILD_TYPE=Release \
+	-DCMAKE_BUILD_TYPE=RelWithDebInfo \
 	$(confflags)
 
 #	exit 1
 
 override_dh_auto_install:
-	dh_auto_install
+       dh_auto_install
        # keep compatibility with previous versions
-	mkdir -p debian/vvdec/opt/vvc
-	ln -sf ../../usr/bin/vvdecapp \
-		debian/vvdec/opt/vvc/vvdecapp
+       mkdir -p debian/vvdec/opt/vvc
+       ln -sf ../../usr/bin/vvdecapp \
+               debian/vvdec/opt/vvc/vvdecapp
 
 override_dh_clean:
 	dh_clean
