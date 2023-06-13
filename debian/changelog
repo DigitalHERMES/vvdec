@@ -1,3 +1,9 @@
+vvdec (2.0.0-1) unstable; urgency=medium
+
+  * Sync with new upstream release.
+
+ -- Rafael Diniz <rafael@rhizomatica.org>  Tue, 13 Jun 2023 21:02:12 +0100
+
 vvdec (1.6.1-1) unstable; urgency=medium
 
   * Sync with new upstream release.
