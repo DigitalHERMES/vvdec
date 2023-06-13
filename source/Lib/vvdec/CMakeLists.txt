@@ -116,6 +116,8 @@ if( VVDEC_ENABLE_X86_SIMD )
   endif()
 
   add_library( ${LIB_NAME}_x86_simd OBJECT ${SSE41_SRC_FILES} ${SSE42_SRC_FILES} ${AVX_SRC_FILES} ${AVX2_SRC_FILES} )
+  target_link_libraries( ${LIB_NAME}_x86_simd ${INTEL_ITT_LINK_TARGET} )
+
   # disble LTO for the files compiled with special architecture flags
   set_target_properties( ${LIB_NAME}_x86_simd PROPERTIES
                                               INTERPROCEDURAL_OPTIMIZATION                OFF
@@ -142,6 +144,10 @@ target_compile_definitions( ${LIB_NAME} PUBLIC $<$<STREQUAL:$<TARGET_PROPERTY:${
 target_include_directories( ${LIB_NAME} SYSTEM INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../../include> $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}> )
 
 target_link_libraries( ${LIB_NAME} ${INTEL_ITT_LINK_TARGET} Threads::Threads )
+
+set_target_properties( ${LIB_NAME} PROPERTIES
+                                   SOVERSION ${PROJECT_VERSION_MAJOR}
+                                   VERSION   ${PROJECT_VERSION} )
 
 # set the folder where to place the projects
 set_target_properties( ${LIB_NAME} PROPERTIES
