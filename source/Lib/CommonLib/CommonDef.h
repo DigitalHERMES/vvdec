@@ -6,7 +6,7 @@ the Software are granted under this license.
 
 The Clear BSD License
 
-Copyright (c) 2018-2023, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVdeC Authors.
+Copyright (c) 2018-2024, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVdeC Authors.
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification,
@@ -381,7 +381,7 @@ static const int PIC_CODE_CW_BINS =                              16;
 static const int FP_PREC =                                       11;
 static const int CSCALE_FP_PREC =                                11;
 static const int SCALE_RATIO_BITS =                              14;
-static const int MAX_SCALING_RATIO =                              8;  // max scaling ratio allowed in the software, it is used to allocated an internla buffer in the rescaling
+static const int MAX_SCALING_RATIO =                              2;  // max scaling ratio allowed in the software, it is used to allocated an internla buffer in the rescaling
 static const std::pair<int, int> SCALE_1X = std::pair<int, int>( 1 << SCALE_RATIO_BITS, 1 << SCALE_RATIO_BITS );  // scale ratio 1x
 static const int DELTA_QP_ACT[4] =                  { -5, 1, 3, 1 };
 
@@ -506,19 +506,33 @@ template<class T> struct AlignedDeleter
 
 #if ENABLE_SIMD_OPT
 
-#  ifdef TARGET_SIMD_X86
-typedef enum
+namespace x86_simd
 {
-  UNDEFINED = -1,
-  SCALAR = 0,
-  SSE41,
-  SSE42,
-  AVX,
-  AVX2,
-  AVX512
-} X86_VEXT;
+#  ifdef TARGET_SIMD_X86
+  typedef enum
+  {
+    UNDEFINED = -1,
+    SCALAR    = 0,
+    SSE41,
+    SSE42,
+    AVX,
+    AVX2,
+    AVX512
+  } X86_VEXT;
+#  endif   // TARGET_SIMD_X86
+}   // namespace x86_simd
 
-#  endif
+namespace arm_simd
+{
+#  ifdef TARGET_SIMD_ARM
+  typedef enum
+  {
+    UNDEFINED = -1,
+    SCALAR    = 0,
+    NEON,
+  } ARM_VEXT;
+#  endif   // TARGET_SIMD_ARM
+}   // namespace arm_simd
 
 #endif   // ENABLE_SIMD_OPT
 

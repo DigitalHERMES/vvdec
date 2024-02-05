@@ -6,7 +6,7 @@ the Software are granted under this license.
 
 The Clear BSD License
 
-Copyright (c) 2018-2023, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVdeC Authors.
+Copyright (c) 2018-2024, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVdeC Authors.
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification,
@@ -187,12 +187,11 @@ CodingUnit& CodingStructure::addCU( const UnitArea &unit, const ChannelType chTy
     }
   }
 
-  PredictionUnit& pu = *cu;
-  pu.setChType( chType );
+  cu->setChType( chType );
 
   if( isLuma( chType ) && unit.lheight() >= 8 && unit.lwidth()  >= 8 && unit.Y().area() >= 128 )
   {
-    pu.mvdL0SubPuOff           = ctuData.dmvrMvCacheOffset;
+    cu->mvdL0SubPuOff           = ctuData.dmvrMvCacheOffset;
     ctuData.dmvrMvCacheOffset += std::max<int>( 1, unit.lwidth() >> DMVR_SUBCU_WIDTH_LOG2 ) * std::max<int>( 1, unit.lheight() >> DMVR_SUBCU_HEIGHT_LOG2 );
   }
 
@@ -316,6 +315,10 @@ void CodingStructure::deallocTempInternals()
 {
   m_cuCache.releaseAll();
   m_tuCache.releaseAll();
+
+  if( m_cuMap ) free( m_cuMap );
+  m_cuMap     = nullptr;
+  m_cuMapSize = 0;
 }
 
 void CodingStructure::initStructData()

@@ -1,12 +1,12 @@
 /* -----------------------------------------------------------------------------
 The copyright in this software is being made available under the Clear BSD
-License, included below. No patent rights, trademark rights and/or 
-other Intellectual Property Rights other than the copyrights concerning 
+License, included below. No patent rights, trademark rights and/or
+other Intellectual Property Rights other than the copyrights concerning
 the Software are granted under this license.
 
 The Clear BSD License
 
-Copyright (c) 2018-2023, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVdeC Authors.
+Copyright (c) 2018-2024, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVdeC Authors.
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification,
@@ -52,11 +52,12 @@ POSSIBILITY OF SUCH DAMAGE.
 
 namespace vvdec
 {
+using namespace x86_simd;
 
 #ifdef TARGET_SIMD_X86
 
 template<X86_VEXT vext, bool isWdt16>
-Distortion RdCost::xGetSAD_MxN_SIMD( const DistParam &rcDtParam )
+Distortion xGetSAD_MxN_SIMD( const DistParam &rcDtParam )
 {
   if( rcDtParam.bitDepth > 10 )
     return isWdt16 ? RdCost::xGetSAD16( rcDtParam ) : RdCost::xGetSAD8( rcDtParam );
@@ -125,7 +126,7 @@ Distortion RdCost::xGetSAD_MxN_SIMD( const DistParam &rcDtParam )
       //0
       __m128i vsrc1 = _mm_loadu_si128( (const __m128i*)(pSrc1) );
       __m128i vsrc2 = _mm_loadu_si128( (const __m128i*)(pSrc2) );
-      
+
       vsum16 = _mm_add_epi16( vsum16, _mm_abs_epi16( _mm_sub_epi16( vsrc1, vsrc2 ) ) );
 
       if( isWdt16 )
@@ -195,7 +196,7 @@ Distortion RdCost::xGetSAD_MxN_SIMD( const DistParam &rcDtParam )
   }
 
   uiSum <<= iSubShift;
-  return uiSum >> DISTORTION_PRECISION_ADJUSTMENT(rcDtParam.bitDepth);
+  return uiSum;
 }
 
 template <X86_VEXT vext, bool isCalCentrePos>
@@ -219,8 +220,8 @@ void xGetSADX5_8xN_SIMDImp(const DistParam& rcDtParam, Distortion* cost) {
   for (i = 0; i < height; i += iSubStep) {
     __m128i s0 = _mm_loadu_si128((__m128i*)piOrg);
     __m128i s1 = _mm_loadu_si128((__m128i*)piCur);
-    __m128i s2 = _mm_loadl_epi64((__m128i*)(piOrg + 8));
-    __m128i s3 = _mm_loadl_epi64((__m128i*)(piCur + 8));
+    __m128i s2 = _mm_loadu_si64 ((__m128i*)(piOrg + 8));
+    __m128i s3 = _mm_loadu_si64 ((__m128i*)(piCur + 8));
 
     __m128i org0, org1, org2, org3, org4;
     org0 = s0;
@@ -275,21 +276,21 @@ void xGetSADX5_8xN_SIMDImp(const DistParam& rcDtParam, Distortion* cost) {
   sum0 = _mm_slli_epi32(sum0, iSubShift);
   if (isCalCentrePos) sum2 = _mm_slli_epi32(sum2, iSubShift);
 
-  sum0 = _mm_srli_epi32(sum0, (1 + (DISTORTION_PRECISION_ADJUSTMENT(rcDtParam.bitDepth))));
-  if (isCalCentrePos) sum2 = _mm_srli_epi32(sum2, (1 + (DISTORTION_PRECISION_ADJUSTMENT(rcDtParam.bitDepth))));
+  sum0 = _mm_srli_epi32(sum0, 1);
+  if (isCalCentrePos) sum2 = _mm_srli_epi32(sum2, 1);
 
-  _mm_storel_epi64( ( __m128i* ) &cost[0], sum0 );
+  _mm_storeu_si64( ( __m128i* ) &cost[0], sum0 );
   if (isCalCentrePos) cost[2] = (_mm_cvtsi128_si32(sum2));
-  _mm_storel_epi64( ( __m128i* ) &cost[3], _mm_unpackhi_epi64( sum0, sum0 ) );
+  _mm_storeu_si64( ( __m128i* ) &cost[3], _mm_unpackhi_epi64( sum0, sum0 ) );
 }
 
 template <X86_VEXT vext>
-void RdCost::xGetSADX5_8xN_SIMD(const DistParam& rcDtParam, Distortion* cost, bool isCalCentrePos) {
+void xGetSADX5_8xN_SIMD(const DistParam& rcDtParam, Distortion* cost, bool isCalCentrePos) {
   if( rcDtParam.bitDepth > 10 ){
     RdCost::xGetSAD16X5( rcDtParam, cost, isCalCentrePos );
     return;
   }
-  
+
   if (isCalCentrePos)
     xGetSADX5_8xN_SIMDImp<vext, true>(rcDtParam, cost);
   else
@@ -322,8 +323,8 @@ void xGetSADX5_16xN_SIMDImp(const DistParam& rcDtParam, Distortion* cost) {
     for (int i = 0; i < ( height >> 3 ); i++) {
       __m256i s0 = _mm256_loadu_si256((__m256i*)piOrg);
       __m256i s1 = _mm256_loadu_si256((__m256i*)piCur);
-      __m256i s2 = _mm256_castsi128_si256(_mm_loadl_epi64((__m128i*)(piOrg + 16)));
-      __m256i s3 = _mm256_castsi128_si256(_mm_loadl_epi64((__m128i*)(piCur + 16)));
+      __m256i s2 = _mm256_castsi128_si256(_mm_loadu_si64((__m128i*)(piOrg + 16)));
+      __m256i s3 = _mm256_castsi128_si256(_mm_loadu_si64((__m128i*)(piCur + 16)));
       s2 = _mm256_permute2x128_si256(s0, s2, 0x21);
       s3 = _mm256_permute2x128_si256(s1, s3, 0x21);
 
@@ -365,8 +366,8 @@ void xGetSADX5_16xN_SIMDImp(const DistParam& rcDtParam, Distortion* cost) {
 
       s0 = _mm256_loadu_si256((__m256i*)piOrg);
       s1 = _mm256_loadu_si256((__m256i*)piCur);
-      s2 = _mm256_castsi128_si256(_mm_loadl_epi64((__m128i*)(piOrg + 16)));
-      s3 = _mm256_castsi128_si256(_mm_loadl_epi64((__m128i*)(piCur + 16)));
+      s2 = _mm256_castsi128_si256(_mm_loadu_si64((__m128i*)(piOrg + 16)));
+      s3 = _mm256_castsi128_si256(_mm_loadu_si64((__m128i*)(piCur + 16)));
       s2 = _mm256_permute2x128_si256(s0, s2, 0x21);
       s3 = _mm256_permute2x128_si256(s1, s3, 0x21);
 
@@ -405,8 +406,8 @@ void xGetSADX5_16xN_SIMDImp(const DistParam& rcDtParam, Distortion* cost) {
 
       s0 = _mm256_loadu_si256((__m256i*)piOrg);
       s1 = _mm256_loadu_si256((__m256i*)piCur);
-      s2 = _mm256_castsi128_si256(_mm_loadl_epi64((__m128i*)(piOrg + 16)));
-      s3 = _mm256_castsi128_si256(_mm_loadl_epi64((__m128i*)(piCur + 16)));
+      s2 = _mm256_castsi128_si256(_mm_loadu_si64((__m128i*)(piOrg + 16)));
+      s3 = _mm256_castsi128_si256(_mm_loadu_si64((__m128i*)(piCur + 16)));
       s2 = _mm256_permute2x128_si256(s0, s2, 0x21);
       s3 = _mm256_permute2x128_si256(s1, s3, 0x21);
 
@@ -445,8 +446,8 @@ void xGetSADX5_16xN_SIMDImp(const DistParam& rcDtParam, Distortion* cost) {
 
       s0 = _mm256_loadu_si256((__m256i*)piOrg);
       s1 = _mm256_loadu_si256((__m256i*)piCur);
-      s2 = _mm256_castsi128_si256(_mm_loadl_epi64((__m128i*)(piOrg + 16)));
-      s3 = _mm256_castsi128_si256(_mm_loadl_epi64((__m128i*)(piCur + 16)));
+      s2 = _mm256_castsi128_si256(_mm_loadu_si64((__m128i*)(piOrg + 16)));
+      s3 = _mm256_castsi128_si256(_mm_loadu_si64((__m128i*)(piCur + 16)));
       s2 = _mm256_permute2x128_si256(s0, s2, 0x21);
       s3 = _mm256_permute2x128_si256(s1, s3, 0x21);
 
@@ -501,16 +502,16 @@ void xGetSADX5_16xN_SIMDImp(const DistParam& rcDtParam, Distortion* cost) {
 
     sum0134 = _mm_slli_epi32(sum0134, iSubShift);
 
-    sum0134 = _mm_srli_epi32(sum0134, (1 + (DISTORTION_PRECISION_ADJUSTMENT(rcDtParam.bitDepth))));
+    sum0134 = _mm_srli_epi32(sum0134, 1);
 
-    _mm_storel_epi64( ( __m128i* ) &cost[0], sum0134 );
+    _mm_storeu_si64( ( __m128i* ) &cost[0], sum0134 );
     if (isCalCentrePos) {
       int tmp = _mm_cvtsi128_si32(_mm256_castsi256_si128(sum2)) + _mm256_extract_epi32(sum2, 4);
       tmp <<= iSubShift;
-      tmp >>= (1 + (DISTORTION_PRECISION_ADJUSTMENT(rcDtParam.bitDepth)));
+      tmp >>= 1;
       cost[2] = tmp;
     }
-    _mm_storel_epi64( ( __m128i* ) &cost[3], _mm_unpackhi_epi64( sum0134, sum0134 ) );
+    _mm_storeu_si64( ( __m128i* ) &cost[3], _mm_unpackhi_epi64( sum0134, sum0134 ) );
   }
   else
 #  endif
@@ -528,8 +529,8 @@ void xGetSADX5_16xN_SIMDImp(const DistParam& rcDtParam, Distortion* cost) {
       for (j = 0; j < 16; j += 8) {
         __m128i s0 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(piOrg + j + 0));
         __m128i s1 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(piCur + j + 0));
-        __m128i s2 = _mm_loadl_epi64(reinterpret_cast<const __m128i*>(piOrg + j + 8));
-        __m128i s3 = _mm_loadl_epi64(reinterpret_cast<const __m128i*>(piCur + j + 8));
+        __m128i s2 = _mm_loadu_si64 (reinterpret_cast<const __m128i*>(piOrg + j + 8));
+        __m128i s3 = _mm_loadu_si64 (reinterpret_cast<const __m128i*>(piCur + j + 8));
 
         __m128i org0, org1, org2, org3, org4;
         org0 = s0;
@@ -585,22 +586,22 @@ void xGetSADX5_16xN_SIMDImp(const DistParam& rcDtParam, Distortion* cost) {
     sum0 = _mm_slli_epi32(sum0, iSubShift);
     if (isCalCentrePos) sum2 = _mm_slli_epi32(sum2, iSubShift);
 
-    sum0 = _mm_srli_epi32(sum0, (1 + (DISTORTION_PRECISION_ADJUSTMENT(rcDtParam.bitDepth))));
-    if (isCalCentrePos) sum2 = _mm_srli_epi32(sum2, (1 + (DISTORTION_PRECISION_ADJUSTMENT(rcDtParam.bitDepth))));
+    sum0 = _mm_srli_epi32(sum0, 1);
+    if (isCalCentrePos) sum2 = _mm_srli_epi32(sum2, 1);
 
-    _mm_storel_epi64( ( __m128i* ) &cost[0], sum0 );
+    _mm_storeu_si64( ( __m128i* ) &cost[0], sum0 );
     if (isCalCentrePos) cost[2] = (_mm_cvtsi128_si32(sum2));
-    _mm_storel_epi64( ( __m128i* ) &cost[3], _mm_unpackhi_epi64( sum0, sum0 ) );
+    _mm_storeu_si64( ( __m128i* ) &cost[3], _mm_unpackhi_epi64( sum0, sum0 ) );
   }
 }
 
 template <X86_VEXT vext>
-void RdCost::xGetSADX5_16xN_SIMD(const DistParam& rcDtParam, Distortion* cost, bool isCalCentrePos) {
+void xGetSADX5_16xN_SIMD(const DistParam& rcDtParam, Distortion* cost, bool isCalCentrePos) {
   if( rcDtParam.bitDepth > 10 ){
     RdCost::xGetSAD16X5( rcDtParam, cost, isCalCentrePos );
     return;
   }
-  
+
   if (isCalCentrePos)
     xGetSADX5_16xN_SIMDImp<vext, true>(rcDtParam, cost);
   else
@@ -612,7 +613,7 @@ void RdCost::_initRdCostX86()
 {
   m_afpDistortFunc[DF_SAD8   ] = xGetSAD_MxN_SIMD<vext, false>;
   m_afpDistortFunc[DF_SAD16  ] = xGetSAD_MxN_SIMD<vext, true>;
-  
+
   m_afpDistortFuncX5[DF_SAD8] = xGetSADX5_8xN_SIMD<vext>;
   m_afpDistortFuncX5[DF_SAD16] = xGetSADX5_16xN_SIMD<vext>;
 }

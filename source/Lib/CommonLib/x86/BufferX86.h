@@ -1,12 +1,12 @@
 /* -----------------------------------------------------------------------------
 The copyright in this software is being made available under the Clear BSD
-License, included below. No patent rights, trademark rights and/or 
-other Intellectual Property Rights other than the copyrights concerning 
+License, included below. No patent rights, trademark rights and/or
+other Intellectual Property Rights other than the copyrights concerning
 the Software are granted under this license.
 
 The Clear BSD License
 
-Copyright (c) 2018-2023, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVdeC Authors.
+Copyright (c) 2018-2024, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVdeC Authors.
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification,
@@ -86,7 +86,7 @@ void addAvg_SSE( const int16_t* src0, ptrdiff_t src0Stride, const int16_t* src1,
         vsumhi = _mm256_add_epi32        ( vsumhi, voffset );
         vsumlo = _mm256_srai_epi32       ( vsumlo, shift );
         vsumhi = _mm256_srai_epi32       ( vsumhi, shift );
-        
+
         __m256i vsum = _mm256_packs_epi32( vsumlo, vsumhi );
         vsum = _mm256_min_epi16( vibdimax, _mm256_max_epi16( vibdimin, vsum ) );
 
@@ -121,7 +121,7 @@ void addAvg_SSE( const int16_t* src0, ptrdiff_t src0Stride, const int16_t* src1,
         vsumhi = _mm_add_epi32        ( vsumhi, voffset );
         vsumlo = _mm_srai_epi32       ( vsumlo, shift );
         vsumhi = _mm_srai_epi32       ( vsumhi, shift );
-        
+
         __m128i vsum = _mm_packs_epi32( vsumlo, vsumhi );
         vsum = _mm_min_epi16( vibdimax, _mm_max_epi16( vibdimin, vsum ) );
 
@@ -145,18 +145,18 @@ void addAvg_SSE( const int16_t* src0, ptrdiff_t src0Stride, const int16_t* src1,
     {
       for( int col = 0; col < width; col += 4 )
       {
-        __m128i vsrc0 = _mm_loadl_epi64( ( const __m128i* )&src0[col] );
-        __m128i vsrc1 = _mm_loadl_epi64( ( const __m128i* )&src1[col] );
+        __m128i vsrc0 = _mm_loadu_si64( ( const __m128i* )&src0[col] );
+        __m128i vsrc1 = _mm_loadu_si64( ( const __m128i* )&src1[col] );
 
         __m128i vsumlo = _mm_madd_epi16( _mm_unpacklo_epi16( vsrc0, vsrc1 ), vone );
 
         vsumlo = _mm_add_epi32        ( vsumlo, voffset );
         vsumlo = _mm_srai_epi32       ( vsumlo, shift );
-        
+
         __m128i vsum = _mm_packs_epi32( vsumlo, vsumhi );
         vsum = _mm_min_epi16( vibdimax, _mm_max_epi16( vibdimin, vsum ) );
 
-        _mm_storel_epi64( ( __m128i * )&dst[col], vsum );
+        _mm_storeu_si64( ( __m128i * )&dst[col], vsum );
       }
 
       src0 += src0Stride;
@@ -247,13 +247,13 @@ void reco_SSE( const int16_t* src0, ptrdiff_t src0Stride, const int16_t* src1, p
     {
       for( int col = 0; col < width; col += 4 )
       {
-        __m128i vsrc = _mm_loadl_epi64( ( const __m128i * )&src0[col] );
-        __m128i vdst = _mm_loadl_epi64( ( const __m128i * )&src1[col] );
+        __m128i vsrc = _mm_loadu_si64( ( const __m128i * )&src0[col] );
+        __m128i vdst = _mm_loadu_si64( ( const __m128i * )&src1[col] );
 
         vdst = _mm_add_epi16( vdst, vsrc );
         vdst = _mm_min_epi16( vbdmax, _mm_max_epi16( vbdmin, vdst ) );
 
-        _mm_storel_epi64( ( __m128i * )&dst[col], vdst );
+        _mm_storeu_si64( ( __m128i * )&dst[col], vdst );
       }
 
       src0 += src0Stride;
@@ -295,7 +295,7 @@ void addWghtAvg_SSE( const int16_t* src0, ptrdiff_t src0Stride, const int16_t* s
           vsum = _mm256_madd_epi16       ( vw, _mm256_unpacklo_epi16( vsrc0, vsrc1 ) );
           vsum = _mm256_add_epi32        ( vsum, voffset );
           vtmp = _mm256_srai_epi32       ( vsum, shift );
-        
+
           vsum = _mm256_madd_epi16       ( vw, _mm256_unpackhi_epi16( vsrc0, vsrc1 ) );
           vsum = _mm256_add_epi32        ( vsum, voffset );
           vsum = _mm256_srai_epi32       ( vsum, shift );
@@ -329,7 +329,7 @@ void addWghtAvg_SSE( const int16_t* src0, ptrdiff_t src0Stride, const int16_t* s
           vsum = _mm_madd_epi16       ( vw, _mm_unpacklo_epi16( vsrc0, vsrc1 ) );
           vsum = _mm_add_epi32        ( vsum, voffset );
           vtmp = _mm_srai_epi32       ( vsum, shift );
-        
+
           vsum = _mm_madd_epi16       ( vw, _mm_unpackhi_epi16( vsrc0, vsrc1 ) );
           vsum = _mm_add_epi32        ( vsum, voffset );
           vsum = _mm_srai_epi32       ( vsum, shift );
@@ -357,15 +357,15 @@ void addWghtAvg_SSE( const int16_t* src0, ptrdiff_t src0Stride, const int16_t* s
     {
       for( int col = 0; col < width; col += 4 )
       {
-        __m128i vsum = _mm_loadl_epi64  ( ( const __m128i * )&src0[col] );
-        __m128i vdst = _mm_loadl_epi64  ( ( const __m128i * )&src1[col] );
-        vsum = _mm_madd_epi16           ( vw, _mm_unpacklo_epi16( vsum, vdst ) );
-        vsum = _mm_add_epi32            ( vsum, voffset );
-        vsum = _mm_srai_epi32           ( vsum, shift );
-        vsum = _mm_packs_epi32          ( vsum, vzero );
+        __m128i vsum = _mm_loadu_si64  ( ( const __m128i * )&src0[col] );
+        __m128i vdst = _mm_loadu_si64  ( ( const __m128i * )&src1[col] );
+        vsum = _mm_madd_epi16          ( vw, _mm_unpacklo_epi16( vsum, vdst ) );
+        vsum = _mm_add_epi32           ( vsum, voffset );
+        vsum = _mm_srai_epi32          ( vsum, shift );
+        vsum = _mm_packs_epi32         ( vsum, vzero );
 
         vsum = _mm_min_epi16( vibdimax, _mm_max_epi16( vibdimin, vsum ) );
-        _mm_storel_epi64( ( __m128i * )&dst[col], vsum );
+        _mm_storeu_si64( ( __m128i * )&dst[col], vsum );
       }
 
       src0 += src0Stride;
@@ -465,7 +465,7 @@ void linTf_SSE( const int16_t* src, ptrdiff_t srcStride, int16_t* dst, ptrdiff_t
       for( int col = 0; col < width; col += 4 )
       {
         __m128i val;
-        val = _mm_loadl_epi64             ( ( const __m128i * )&src[col] );
+        val = _mm_loadu_si64             ( ( const __m128i * )&src[col] );
         val = _mm_cvtepi16_epi32          ( val );
         do_mult<doMult, __m128i>          ( val, vscale );
         do_shift<doShift, shiftR, __m128i>( val, shift );
@@ -473,7 +473,7 @@ void linTf_SSE( const int16_t* src, ptrdiff_t srcStride, int16_t* dst, ptrdiff_t
         val = _mm_packs_epi32             ( val, vzero );
         do_clip<clip, __m128i>            ( val, vbdmin, vbdmax );
 
-        _mm_storel_epi64                  ( ( __m128i * )&dst[col], val );
+        _mm_storeu_si64                  ( ( __m128i * )&dst[col], val );
       }
 
       src += srcStride;
@@ -499,10 +499,10 @@ void transposePel_SSE( const Pel* src, ptrdiff_t srcStride, Pel* dst, ptrdiff_t 
   {
     __m128i va, vb, vc, vd;
 
-    va = _mm_loadl_epi64( ( const __m128i* ) src ); src += srcStride;
-    vb = _mm_loadl_epi64( ( const __m128i* ) src ); src += srcStride;
-    vc = _mm_loadl_epi64( ( const __m128i* ) src ); src += srcStride;
-    vd = _mm_loadl_epi64( ( const __m128i* ) src );
+    va = _mm_loadu_si64( ( const __m128i* ) src ); src += srcStride;
+    vb = _mm_loadu_si64( ( const __m128i* ) src ); src += srcStride;
+    vc = _mm_loadu_si64( ( const __m128i* ) src ); src += srcStride;
+    vd = _mm_loadu_si64( ( const __m128i* ) src );
 
     __m128i va01b01 = _mm_unpacklo_epi16( va,      vb );
     __m128i va23b23 = _mm_unpackhi_epi64( va01b01, vb );
@@ -514,10 +514,10 @@ void transposePel_SSE( const Pel* src, ptrdiff_t srcStride, Pel* dst, ptrdiff_t 
     vc = _mm_unpacklo_epi32( va23b23, vc23d23 );
     vd = _mm_unpackhi_epi64( vc,      vc );
 
-    _mm_storel_epi64( ( __m128i* ) dst, va ); dst += dstStride;
-    _mm_storel_epi64( ( __m128i* ) dst, vb ); dst += dstStride;
-    _mm_storel_epi64( ( __m128i* ) dst, vc ); dst += dstStride;
-    _mm_storel_epi64( ( __m128i* ) dst, vd );
+    _mm_storeu_si64( ( __m128i* ) dst, va ); dst += dstStride;
+    _mm_storeu_si64( ( __m128i* ) dst, vb ); dst += dstStride;
+    _mm_storeu_si64( ( __m128i* ) dst, vc ); dst += dstStride;
+    _mm_storeu_si64( ( __m128i* ) dst, vd );
   }
   else if( W == 8 )
   {
@@ -624,7 +624,7 @@ void applyLut_SIMD( Pel* ptr, ptrdiff_t ptrStride, int width, int height, const 
       {
         __m256i vin16    = _mm256_load_si256        ( ( const __m256i * ) &ptr[x] );
         __m256i vin16x   = _mm256_load_si256        ( ( const __m256i * ) &ptr[x + ptrStride] );
-                                                    
+
         __m256i vin32_1  = _mm256_unpacklo_epi16    ( vin16,  _mm256_setzero_si256() );
         __m256i vin32_2  = _mm256_unpackhi_epi16    ( vin16,  _mm256_setzero_si256() );
         __m256i vin32_1x = _mm256_unpacklo_epi16    ( vin16x, _mm256_setzero_si256() );
@@ -748,7 +748,7 @@ void rspBcwCore_SIMD( Pel* ptr, ptrdiff_t ptrStride, int width, int height, cons
         case  0: if( min < LmcsPivot[++i] ) { break; };
         }
 
-        --i;  
+        --i;
 
         __m256i xidx0 = _mm256_set1_epi16( i );
         __m256i xidx1 = xidx0;
@@ -770,15 +770,15 @@ void rspBcwCore_SIMD( Pel* ptr, ptrdiff_t ptrStride, int width, int height, cons
           __m256i currd = _mm256_sub_epi16( xsrc0, xlmcs );
           diff0         = _mm256_min_epu16( diff0, currd );
           __m256i chnd0 = _mm256_cmpeq_epi16( currd, diff0 );
-          
+
           currd         = _mm256_sub_epi16( xsrc1, xlmcs );
           diff1         = _mm256_min_epu16( diff1, currd );
           __m256i chnd1 = _mm256_cmpeq_epi16( currd, diff1 );
-          
+
           currd         = _mm256_sub_epi16( xsrc2, xlmcs );
           diff2         = _mm256_min_epu16( diff2, currd );
           __m256i chnd2 = _mm256_cmpeq_epi16( currd, diff2 );
-          
+
           currd         = _mm256_sub_epi16( xsrc3, xlmcs );
           diff3         = _mm256_min_epu16( diff3, currd );
           __m256i chnd3 = _mm256_cmpeq_epi16( currd, diff3 );
@@ -802,11 +802,11 @@ void rspBcwCore_SIMD( Pel* ptr, ptrdiff_t ptrStride, int width, int height, cons
 
         __m256i xinp = _mm256_unpacklo_epi8( _mm256_shuffle_epi8( mInputPivotLo, xidx0 ), _mm256_shuffle_epi8( mInputPivotHi, xidx0 ) );
         __m256i xscl = _mm256_unpacklo_epi8( _mm256_shuffle_epi8( mScaleCoeffLo, xidx0 ), _mm256_shuffle_epi8( mScaleCoeffHi, xidx0 ) );
-        
+
         __m256i
         xtmp1 = _mm256_slli_epi16( diff0, 4 );
         xtmp1 = _mm256_mulhrs_epi16( xtmp1, xscl );
-                   
+
         xtmp1 = _mm256_add_epi16( xinp, xtmp1 );
 
         xtmp1 = _mm256_min_epi16( xtmp1, mMax );
@@ -856,7 +856,7 @@ void rspBcwCore_SIMD( Pel* ptr, ptrdiff_t ptrStride, int width, int height, cons
 
       ptr += ( ptrStride << 2 );
     }
-    
+
     _mm256_zeroupper();
   }
   else
@@ -945,19 +945,19 @@ void rspBcwCore_SIMD( Pel* ptr, ptrdiff_t ptrStride, int width, int height, cons
           __m128i currd = _mm_sub_epi16( xsrc0, xlmcs );
           diff0         = _mm_min_epu16( diff0, currd );
           __m128i chnd0 = _mm_cmpeq_epi16( currd, diff0 );
-          
+
           currd         = _mm_sub_epi16( xsrc1, xlmcs );
           diff1         = _mm_min_epu16( diff1, currd );
           __m128i chnd1 = _mm_cmpeq_epi16( currd, diff1 );
-          
+
           currd         = _mm_sub_epi16( xsrc2, xlmcs );
           diff2         = _mm_min_epu16( diff2, currd );
           __m128i chnd2 = _mm_cmpeq_epi16( currd, diff2 );
-          
+
           currd         = _mm_sub_epi16( xsrc3, xlmcs );
           diff3         = _mm_min_epu16( diff3, currd );
           __m128i chnd3 = _mm_cmpeq_epi16( currd, diff3 );
-          
+
           xidx0         = _mm_sub_epi16( xidx0, chnd0 );
           xidx1         = _mm_sub_epi16( xidx1, chnd1 );
           xidx2         = _mm_sub_epi16( xidx2, chnd2 );
@@ -977,7 +977,7 @@ void rspBcwCore_SIMD( Pel* ptr, ptrdiff_t ptrStride, int width, int height, cons
 
         __m128i xinp = _mm_unpacklo_epi8( _mm_shuffle_epi8( mInputPivotLo, xidx0 ), _mm_shuffle_epi8( mInputPivotHi, xidx0 ) );
         __m128i xscl = _mm_unpacklo_epi8( _mm_shuffle_epi8( mScaleCoeffLo, xidx0 ), _mm_shuffle_epi8( mScaleCoeffHi, xidx0 ) );
-        
+
         xtmp1 = _mm_slli_epi16( diff0, 4 );
         xtmp1 = _mm_mulhrs_epi16( xtmp1, xscl );
 
@@ -990,41 +990,41 @@ void rspBcwCore_SIMD( Pel* ptr, ptrdiff_t ptrStride, int width, int height, cons
 
         xinp = _mm_unpacklo_epi8( _mm_shuffle_epi8( mInputPivotLo, xidx1 ), _mm_shuffle_epi8( mInputPivotHi, xidx1 ) );
         xscl = _mm_unpacklo_epi8( _mm_shuffle_epi8( mScaleCoeffLo, xidx1 ), _mm_shuffle_epi8( mScaleCoeffHi, xidx1 ) );
-        
+
         xtmp1 = _mm_slli_epi16( diff1, 4 );
         xtmp1 = _mm_mulhrs_epi16( xtmp1, xscl );
-        
+
         xtmp1 = _mm_add_epi16( xinp, xtmp1 );
-        
+
         xtmp1 = _mm_min_epi16( xtmp1, mMax );
         xtmp1 = _mm_max_epi16( xtmp1, mMin );
-        
+
         _mm_store_si128( (__m128i*) & ptr[x+ptrStride], xtmp1 );
 
         xinp = _mm_unpacklo_epi8( _mm_shuffle_epi8( mInputPivotLo, xidx2 ), _mm_shuffle_epi8( mInputPivotHi, xidx2 ) );
         xscl = _mm_unpacklo_epi8( _mm_shuffle_epi8( mScaleCoeffLo, xidx2 ), _mm_shuffle_epi8( mScaleCoeffHi, xidx2 ) );
-        
+
         xtmp1 = _mm_slli_epi16( diff2, 4 );
         xtmp1 = _mm_mulhrs_epi16( xtmp1, xscl );
-        
+
         xtmp1 = _mm_add_epi16( xinp, xtmp1 );
-        
+
         xtmp1 = _mm_min_epi16( xtmp1, mMax );
         xtmp1 = _mm_max_epi16( xtmp1, mMin );
-        
+
         _mm_store_si128( (__m128i*) & ptr[x + 2 * ptrStride], xtmp1 );
-        
+
         xinp = _mm_unpacklo_epi8( _mm_shuffle_epi8( mInputPivotLo, xidx3 ), _mm_shuffle_epi8( mInputPivotHi, xidx3 ) );
         xscl = _mm_unpacklo_epi8( _mm_shuffle_epi8( mScaleCoeffLo, xidx3 ), _mm_shuffle_epi8( mScaleCoeffHi, xidx3 ) );
-        
+
         xtmp1 = _mm_slli_epi16( diff3, 4 );
         xtmp1 = _mm_mulhrs_epi16( xtmp1, xscl );
-        
+
         xtmp1 = _mm_add_epi16( xinp, xtmp1 );
-        
+
         xtmp1 = _mm_min_epi16( xtmp1, mMax );
         xtmp1 = _mm_max_epi16( xtmp1, mMin );
-        
+
         _mm_store_si128( (__m128i*) & ptr[x + 3 * ptrStride], xtmp1 );
       }
 
@@ -1134,7 +1134,7 @@ void rspFwdCore_SIMD( Pel* ptr, ptrdiff_t ptrStride, int width, int height, cons
 
     const __m128i mInputPivotLo = _mm_unpacklo_epi64( xtmp3, xtmp4 );
     const __m128i mInputPivotHi = _mm_unpackhi_epi64( xtmp3, xtmp4 );
-    
+
 
     xtmp1 = _mm_loadu_si128( ( const __m128i* ) &ScaleCoeff[0] );
     xtmp2 = _mm_loadu_si128( ( const __m128i* ) &ScaleCoeff[8] );
@@ -1159,7 +1159,7 @@ void rspFwdCore_SIMD( Pel* ptr, ptrdiff_t ptrStride, int width, int height, cons
         const __m128i xlmc = _mm_unpacklo_epi8( _mm_shuffle_epi8( mLmcsPivotLo,  xidx ), _mm_shuffle_epi8( mLmcsPivotHi,  xidx ) );
         const __m128i xinp = _mm_unpacklo_epi8( _mm_shuffle_epi8( mInputPivotLo, xidx ), _mm_shuffle_epi8( mInputPivotHi, xidx ) );
         const __m128i xscl = _mm_unpacklo_epi8( _mm_shuffle_epi8( mScaleCoeffLo, xidx ), _mm_shuffle_epi8( mScaleCoeffHi, xidx ) );
-        
+
         xtmp1 = _mm_slli_epi16( _mm_subs_epi16( xsrc, xinp ), 4 );
         xtmp1 = _mm_mulhrs_epi16( xtmp1, xscl );
 
@@ -1453,7 +1453,7 @@ void sampleRateConvSIMD_8tap( const std::pair<int, int> scalingRatio, const std:
         if( integer + 0 - (filterLength / 2) + 1 >= 0 && integer + (NTAPS_LUMA - 1) - (filterLength / 2) + 1 < orgHeight )
         {
           int yInt = integer + 0 - (filterLength / 2) + 1;
-        
+
           vsrc0 = _mm256_loadu_si256( (const __m256i*) &tmp0[yInt] );
           vsrc1 = _mm256_loadu_si256( (const __m256i*) &tmp1[yInt] );
           vsrc2 = _mm256_loadu_si256( (const __m256i*) &tmp2[yInt] );
@@ -1503,7 +1503,7 @@ void sampleRateConvSIMD_8tap( const std::pair<int, int> scalingRatio, const std:
         if( integer + 0 - ( filterLength / 2 ) + 1 >= 0 && integer + ( NTAPS_LUMA - 1 ) - ( filterLength / 2 ) + 1 < orgHeight )
         {
           int yInt = integer + 0 - ( filterLength / 2 ) + 1;
-      
+
           vsrc0[0] = _mm_loadu_si128( (const __m128i*) &tmp0[yInt]);
           vsrc0[1] = _mm_loadu_si128( (const __m128i*) &tmp0[yInt + 4]);
 
@@ -1561,7 +1561,7 @@ void sampleRateConvSIMD_8tap( const std::pair<int, int> scalingRatio, const std:
 
       if( i + 3 < scaledWidth )
       {
-        _mm_storel_epi64( (__m128i*) &dst[i], vres0 );
+        _mm_storeu_si64( (__m128i*) &dst[i], vres0 );
       }
       else if( i + 2 < scaledWidth )
       {
@@ -1641,10 +1641,10 @@ void sampleRateConvSIMD_4tap( const std::pair<int, int> scalingRatio, const std:
       {
         int xInt = integer + 0 - (filterLength / 2) + 1;
 
-        vsrc0 = _mm_loadl_epi64( (const __m128i*) & org0[xInt] );
-        vsrc1 = _mm_loadl_epi64( (const __m128i*) & org1[xInt] );
-        vsrc2 = _mm_loadl_epi64( (const __m128i*) & org2[xInt] );
-        vsrc3 = _mm_loadl_epi64( (const __m128i*) & org3[xInt] );
+        vsrc0 = _mm_loadu_si64( (const __m128i*) & org0[xInt] );
+        vsrc1 = _mm_loadu_si64( (const __m128i*) & org1[xInt] );
+        vsrc2 = _mm_loadu_si64( (const __m128i*) & org2[xInt] );
+        vsrc3 = _mm_loadu_si64( (const __m128i*) & org3[xInt] );
       }
       else
       {
@@ -1660,10 +1660,10 @@ void sampleRateConvSIMD_4tap( const std::pair<int, int> scalingRatio, const std:
           src[3][k] = org3[xInt];
         }
 
-        vsrc0 = _mm_loadl_epi64( (const __m128i*) & src[0][0] );
-        vsrc1 = _mm_loadl_epi64( (const __m128i*) & src[1][0] );
-        vsrc2 = _mm_loadl_epi64( (const __m128i*) & src[2][0] );
-        vsrc3 = _mm_loadl_epi64( (const __m128i*) & src[3][0] );
+        vsrc0 = _mm_loadu_si64( (const __m128i*) & src[0][0] );
+        vsrc1 = _mm_loadu_si64( (const __m128i*) & src[1][0] );
+        vsrc2 = _mm_loadu_si64( (const __m128i*) & src[2][0] );
+        vsrc3 = _mm_loadu_si64( (const __m128i*) & src[3][0] );
       }
 
       __m128i vflt = _mm_loadu_si128( (const __m128i*) f );
@@ -1757,7 +1757,7 @@ void sampleRateConvSIMD_4tap( const std::pair<int, int> scalingRatio, const std:
 
       if( i + 3 < scaledWidth )
       {
-        _mm_storel_epi64( (__m128i*) & dst[i], vres0 );
+        _mm_storeu_si64( (__m128i*) & dst[i], vres0 );
       }
       else if( i + 2 < scaledWidth )
       {
@@ -1833,7 +1833,7 @@ void PelBufferOps::_initPelBufOpsX86()
     applyLut = applyLut_SIMD<vext>;
   else
     rspBcw = rspBcwCore_SIMD<vext>;
-    
+
 #endif
   rspFwd = rspFwdCore_SIMD<vext>;
 
@@ -1849,5 +1849,5 @@ template void PelBufferOps::_initPelBufOpsX86<SIMDX86>();
 }
 
 #endif // TARGET_SIMD_X86
-#endif
+#endif // ENABLE_SIMD_OPT_BUFFER
 //! \}

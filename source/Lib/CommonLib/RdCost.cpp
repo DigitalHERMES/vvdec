@@ -6,7 +6,7 @@ the Software are granted under this license.
 
 The Clear BSD License
 
-Copyright (c) 2018-2023, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVdeC Authors.
+Copyright (c) 2018-2024, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVdeC Authors.
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification,
@@ -63,9 +63,12 @@ RdCost::RdCost()
   m_afpDistortFuncX5[DF_SAD16  ] = RdCost::xGetSAD16X5;
 
 #if ENABLE_SIMD_OPT_DIST
-#ifdef TARGET_SIMD_X86
+#  ifdef TARGET_SIMD_X86
   initRdCostX86();
-#endif
+#  endif
+#  ifdef TARGET_SIMD_ARM
+  initRdCostARM();
+#  endif
 #endif
 }
 
@@ -129,7 +132,7 @@ Distortion RdCost::xGetSAD8( const DistParam& rcDtParam )
   }
 
   uiSum <<= iSubShift;
-  return (uiSum >> DISTORTION_PRECISION_ADJUSTMENT(rcDtParam.bitDepth));
+  return uiSum;
 }
 
 Distortion RdCost::xGetSAD16( const DistParam& rcDtParam )
@@ -168,7 +171,7 @@ Distortion RdCost::xGetSAD16( const DistParam& rcDtParam )
   }
 
   uiSum <<= iSubShift;
-  return (uiSum >> DISTORTION_PRECISION_ADJUSTMENT(rcDtParam.bitDepth));
+  return uiSum;
 }
 
 void RdCost::xGetSAD8X5(const DistParam& rcDtParam, Distortion* cost, bool isCalCentrePos) {

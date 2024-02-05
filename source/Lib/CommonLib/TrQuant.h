@@ -6,7 +6,7 @@ the Software are granted under this license.
 
 The Clear BSD License
 
-Copyright (c) 2018-2023, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVdeC Authors.
+Copyright (c) 2018-2024, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVdeC Authors.
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification,
@@ -57,6 +57,7 @@ POSSIBILITY OF SUCH DAMAGE.
 
 namespace vvdec
 {
+using namespace x86_simd;
 
 typedef void InvTrans(const TCoeff*, TCoeff*, int, int, int, int, bool, const TCoeff, const TCoeff);
 
@@ -135,4 +136,4 @@ private:
 #endif
 };// END CLASS DEFINITION TrQuant
 
-}
+}   // namespace vvdec

@@ -1,12 +1,12 @@
 /* -----------------------------------------------------------------------------
 The copyright in this software is being made available under the Clear BSD
-License, included below. No patent rights, trademark rights and/or 
-other Intellectual Property Rights other than the copyrights concerning 
+License, included below. No patent rights, trademark rights and/or
+other Intellectual Property Rights other than the copyrights concerning
 the Software are granted under this license.
 
 The Clear BSD License
 
-Copyright (c) 2018-2023, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVdeC Authors.
+Copyright (c) 2018-2024, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVdeC Authors.
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification,
@@ -99,130 +99,175 @@ public:
 public:
 
   /// Constructor
-  VVDecImpl();
+  VVDecImpl() = default;
 
   /// Destructor
-  virtual ~VVDecImpl();
+  ~VVDecImpl() = default;
 
   class FrameStorage
   {
   public:
-    FrameStorage()  = default;
-    ~FrameStorage() = default;
-
     int allocateStorage( size_t size )
     {
       if( size == 0 ){ return VVDEC_ERR_ALLOCATE; }
-      m_ptr = new unsigned char [ size ];
+      m_ptr.reset( new unsigned char[size] );
       m_size = size;
-      m_isAllocated = true;
       return 0;
     }
 
     int freeStorage()
     {
-      if( !m_isAllocated) { return VVDEC_ERR_ALLOCATE; }
-      delete [] m_ptr;
+      if( !m_ptr ) { return VVDEC_ERR_ALLOCATE; }
+      m_ptr.reset();
       m_size = 0;
-      m_isAllocated = false;
       return 0;
     }
 
     unsigned char * getStorage()
     {
-      if( !m_isAllocated) { return nullptr; }
-      return m_ptr;
+      return m_ptr.get();
     }
 
-    bool isAllocated(){ return m_isAllocated; }
-    bool isExternAllocator(){ return m_isExternAllocator; }
-    void setExternAllocator(){ m_isExternAllocator = true; }
-   
+    bool isAllocated() { return !!m_ptr; }
+    bool isExternAllocator() { return m_isExternAllocator; }
+    void setExternAllocator() { m_isExternAllocator = true; }
+
   private:
-    bool           m_isAllocated = false;
-    unsigned char *m_ptr         = nullptr;     // pointer to plane buffer
-    size_t         m_size        = 0;
-    bool           m_isExternAllocator = false;
+    std::unique_ptr<unsigned char[]> m_ptr               = nullptr;   // pointer to plane buffer
+    size_t                           m_size              = 0;
+    bool                             m_isExternAllocator = false;
   };
 
 public:
 
-   int init( const vvdecParams& params, vvdecCreateBufferCallback callbackCreateBuf = nullptr, vvdecUnrefBufferCallback callbackUnrefBuf = nullptr );
+  int init( const vvdecParams& params, vvdecCreateBufferCallback callbackCreateBuf = nullptr, vvdecUnrefBufferCallback callbackUnrefBuf = nullptr );
 
-   int uninit();
-   int reset();
+  int uninit();
+  int reset();
 
-   void setLoggingCallback( vvdecLoggingCallback callback );
+  void setLoggingCallback( vvdecLoggingCallback callback );
 
-   int decode( vvdecAccessUnit& accessUnit, vvdecFrame** ppframe );
+  int decode( vvdecAccessUnit& accessUnit, vvdecFrame** ppframe );
 
-   int flush( vvdecFrame** ppcFrame );
+  int flush( vvdecFrame** ppcFrame );
 
-   vvdecSEI* findFrameSei( vvdecSEIPayloadType payloadType, vvdecFrame *frame );
+  vvdecSEI* findFrameSei( vvdecSEIPayloadType payloadType, vvdecFrame *frame );
 
-   int objectUnref( vvdecFrame* pframe );
+  int objectUnref( vvdecFrame* pframe );
 
-   int getNumberOfErrorsPictureHashSEI( );
+  int getNumberOfErrorsPictureHashSEI( );
 
-   int setAndRetErrorMsg( int Ret, std::string errString = "" );
+  int setAndRetErrorMsg( int Ret, std::string errString = "" );
 
-   const char* getDecoderInfo();
-//   const char* getDecoderCapabilities( );
+  const char* getDecoderInfo();
 
-   static const char* getErrorMsg( int nRet );
-   static const char* getVersionNumber();
+  template<class MembFunc, class... Args>
+  auto catchExceptions( MembFunc fn, Args... args );
 
-   static vvdecNalType getNalUnitType       ( vvdecAccessUnit& accessUnit );
-   static const char* getNalUnitTypeAsString( vvdecNalType t );
-   static bool isNalUnitSlice               ( vvdecNalType t );
+  static const char* getErrorMsg( int nRet );
+  static const char* getVersionNumber();
 
-private:
-   int xAddPicture                  ( Picture* pcPic );
-   int xCreateFrame                 ( vvdecFrame& frame, const CPelUnitBuf& rcPicBuf, uint32_t uiWidth, uint32_t uiHeight, const BitDepths& rcBitDepths, bool bCreateStorage );
+  static vvdecNalType getNalUnitType       ( vvdecAccessUnit& accessUnit );
+  static const char* getNalUnitTypeAsString( vvdecNalType t );
+  static bool isNalUnitSlice               ( vvdecNalType t );
 
-   static int xRetrieveNalStartCode ( unsigned char *pB, int iZerosInStartcode );
-   static int xConvertPayloadToRBSP ( std::vector<uint8_t>& nalUnitBuf, InputBitstream *bitstream, bool isVclNalUnit);
-   static int xReadNalUnitHeader    ( InputNALUnit& nalu );
-
-   int xHandleOutput( Picture* pcPic );
-   bool isFrameConverted( vvdecFrame* frame );
-
-   static int copyComp( const unsigned char* pucSrc, unsigned char* pucDest, unsigned int uiWidth, unsigned int uiHeight, ptrdiff_t iStrideSrc, ptrdiff_t iStrideDest, int iBytesPerSample );
-
-   void vvdec_picAttributes_default(vvdecPicAttributes *attributes);
-   void vvdec_frame_default(vvdecFrame *frame);
-   void vvdec_plane_default(vvdecPlane *plane);
-   void vvdec_frame_reset(vvdecFrame *frame );
+  std::string                             m_cErrorString;
+  std::string                             m_cAdditionalErrorString;
 
 private:
-  typedef std::map<uint64_t,FrameStorage>    frameStorageMap;
-  typedef frameStorageMap::value_type        frameStorageMapType;
-public:
-   bool                                    m_bInitialized   = false;
-   bool                                    m_bRemovePadding = false; // copy picture before output to remove padding
-   VVDecInternalState                      m_eState         = INTERNAL_STATE_UNINITIALIZED;
-   ErrHandlingFlags                        m_eErrHandlingFlags = ERR_HANDLING_TRY_CONTINUE;
+  int xAddPicture                  ( Picture* pcPic );
+  int xCreateFrame                 ( vvdecFrame& frame, const CPelUnitBuf& rcPicBuf, uint32_t uiWidth, uint32_t uiHeight, const BitDepths& rcBitDepths, bool bCreateStorage );
 
-   std::unique_ptr<DecLib>                 m_cDecLib;
+  static int xRetrieveNalStartCode ( unsigned char *pB, int iZerosInStartcode );
+  static int xConvertPayloadToRBSP ( std::vector<uint8_t>& nalUnitBuf, InputBitstream *bitstream, bool isVclNalUnit);
+  static int xReadNalUnitHeader    ( InputNALUnit& nalu );
 
-   std::list<vvdecFrame>                   m_rcFrameList;
-   std::list<vvdecFrame>::iterator         m_pcFrameNext = m_rcFrameList.begin();
+  int xHandleOutput( Picture* pcPic );
+  bool isFrameConverted( vvdecFrame* frame );
 
-   std::list<Picture*>                     m_pcLibPictureList;       // internal picture list
-   frameStorageMap                         m_cFrameStorageMap;       // map of frame storage class( converted frames)
-   UserAllocator                           m_cUserAllocator;         // user allocator object, valid if buffers are managed external
+  static int copyComp( const unsigned char* pucSrc, unsigned char* pucDest, unsigned int uiWidth, unsigned int uiHeight, ptrdiff_t iStrideSrc, ptrdiff_t iStrideDest, int iBytesPerSample );
 
-   std::string                             m_sDecoderInfo;
-   std::string                             m_sDecoderCapabilities;
+  void vvdec_picAttributes_default(vvdecPicAttributes *attributes);
+  void vvdec_frame_default(vvdecFrame *frame);
+  void vvdec_plane_default(vvdecPlane *plane);
+  void vvdec_frame_reset(vvdecFrame *frame );
 
-   std::string                             m_cErrorString;
-   std::string                             m_cAdditionalErrorString;
+private:
+  typedef std::tuple<vvdecFrame, Picture*> FrameListEntry;
+  typedef std::map<uint64_t, FrameStorage> FrameStorageMap;
+  typedef FrameStorageMap::value_type      FrameStorageMapType;
 
-   uint64_t                                m_uiSeqNumber       = 0;
-   uint64_t                                m_uiSeqNumOutput    = 0;
-   uint64_t                                m_uiPicCount        = 0;
+  bool                                     m_bInitialized   = false;
+  bool                                     m_bRemovePadding = false; // copy picture before output to remove padding
+  VVDecInternalState                       m_eState         = INTERNAL_STATE_UNINITIALIZED;
+  ErrHandlingFlags                         m_eErrHandlingFlags = ERR_HANDLING_TRY_CONTINUE;
+
+  std::unique_ptr<DecLib>                  m_cDecLib;
+
+  std::list<FrameListEntry>                m_rcFrameList;
+  std::list<FrameListEntry>::iterator      m_pcFrameNext = m_rcFrameList.begin();
+
+  FrameStorageMap                          m_cFrameStorageMap;       // map of frame storage class( converted frames)
+  UserAllocator                            m_cUserAllocator;         // user allocator object, valid if buffers are managed external
+
+  std::string                              m_sDecoderInfo;
+  std::string                              m_sDecoderCapabilities;
+
+  uint64_t                                 m_uiSeqNumber       = 0;
+  uint64_t                                 m_uiSeqNumOutput    = 0;
 };
 
+template<class MembFunc, class... Args>
+inline auto VVDecImpl::catchExceptions( MembFunc fn, Args... args )
+{
+  using TRet = decltype( ( this->*fn )( args... ) );
+  // helper to either return an error value or nullptr based on the wrapped function's return type
+  static auto returnErrOrNullptr = []( intptr_t err )
+  {
+    if( std::is_pointer<TRet>() )
+      return (TRet) NULL;
+    return (TRet) err;
+  };
 
-} // namespace
+  try
+  {
+    return ( this->*fn )( args... );
+  }
+  catch( UnsupportedFeatureException& e )
+  {
+    m_cErrorString           = "unsupported feature exception";
+    m_cAdditionalErrorString = std::string( "caught exception for unsupported feature: " ) + e.what();
+    m_eState                 = INTERNAL_STATE_NOT_SUPPORTED;
+    return returnErrOrNullptr( VVDEC_ERR_NOT_SUPPORTED );
+  }
+  catch( Exception& e )
+  {
+    m_cErrorString           = "decoder exception";
+    m_cAdditionalErrorString = std::string( "caught decoder exception: " ) + e.what();
+    m_eState                 = INTERNAL_STATE_RESTART_REQUIRED;
+    return returnErrOrNullptr( VVDEC_ERR_RESTART_REQUIRED );
+  }
+  catch( std::overflow_error& e )
+  {
+    m_cErrorString           = "overflow exception";
+    m_cAdditionalErrorString = std::string( "caught overflow exception: " ) + e.what();
+    m_eState                 = INTERNAL_STATE_RESTART_REQUIRED;
+    return returnErrOrNullptr( VVDEC_ERR_RESTART_REQUIRED );
+  }
+  catch( std::exception& e )
+  {
+    m_cErrorString           = "unknown exception";
+    m_cAdditionalErrorString = std::string( "caught unknown exception: " ) + e.what();
+    m_eState                 = INTERNAL_STATE_RESTART_REQUIRED;
+    return returnErrOrNullptr( VVDEC_ERR_RESTART_REQUIRED );
+  }
+  catch( ... )
+  {
+    m_cErrorString           = "unknown exception";
+    m_cAdditionalErrorString = "no details available";
+    m_eState                 = INTERNAL_STATE_RESTART_REQUIRED;
+    return returnErrOrNullptr( VVDEC_ERR_RESTART_REQUIRED );
+  }
+}
 
+}   // namespace vvdec

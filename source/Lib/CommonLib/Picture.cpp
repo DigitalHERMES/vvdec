@@ -6,7 +6,7 @@ the Software are granted under this license.
 
 The Clear BSD License
 
-Copyright (c) 2018-2023, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVdeC Authors.
+Copyright (c) 2018-2024, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVdeC Authors.
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification,
@@ -125,13 +125,14 @@ void Picture::resetForUse( int _layerId )
   m_dProcessingTime       = 0;
   subPicExtStarted        = false;
   borderExtStarted        = false;
-  referenced              = false;
+  dpbReferenceMark        = unreferenced;
+  stillReferenced         = false;
+  isReferencePic          = false;
   progress                = Picture::init;
   neededForOutput         = false;
   wasLost                 = false;
   error                   = false;
   exceptionThrownOut      = false;
-  longTerm                = false;
   topField                = false;
   fieldPic                = false;
   nonReferencePictureFlag = false;
@@ -160,7 +161,6 @@ void Picture::resetForUse( int _layerId )
 
   m_divTasksCounter     .clearException();
   m_ctuTaskCounter      .clearException();
-  m_motionTaskCounter   .clearException();
   m_borderExtTaskCounter.clearException();
   m_copyWrapBufDone     .clearException();
   reconDone             .clearException();
@@ -204,7 +204,6 @@ void Picture::destroy()
 
   m_divTasksCounter     .clearException();
   m_ctuTaskCounter      .clearException();
-  m_motionTaskCounter   .clearException();
   m_borderExtTaskCounter.clearException();
   m_copyWrapBufDone     .clearException();
   reconDone             .clearException();
@@ -343,7 +342,6 @@ bool Picture::lastSliceOfPicPresent() const
 
 void Picture::waitForAllTasks()
 {
-  m_motionTaskCounter.wait_nothrow();
   m_ctuTaskCounter.wait_nothrow();
   m_borderExtTaskCounter.wait_nothrow();
   m_divTasksCounter.wait_nothrow();   // this waits for the slice parsing and the finishPic Task
@@ -357,12 +355,13 @@ void Picture::ensureUsableAsRef()
   neededForOutput = false;
 
   // set referenced to true, because we don't know if it has been set correctly, but that way it will be available as a reference pic
-  referenced = true;
+  dpbReferenceMark = ShortTerm;
+  stillReferenced  = true;
+  isReferencePic   = true;
 
   // ensure cs->m_colMiMap is set to zero
   cs->initStructData();
 
-  CHECK( m_motionTaskCounter.hasException(), "to be usable as reference the picture should not have an Exception on the dmvr task counter" );
   CHECK( reconDone.hasException(), "to be usable as reference the picture should not have an Exception reconDone barrier" );
 }
 

@@ -6,7 +6,7 @@ the Software are granted under this license.
 
 The Clear BSD License
 
-Copyright (c) 2018-2023, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVdeC Authors.
+Copyright (c) 2018-2024, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVdeC Authors.
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification,
@@ -391,7 +391,7 @@ typedef struct vvdecPicAttributes
   vvdecSliceType  sliceType;           // slice type (I/P/B) */
   bool            isRefPic;            // reference picture
   uint32_t        temporalLayer;       // temporal layer
-  uint64_t        poc;                 // picture order count
+  int64_t         poc;                 // picture order count
   uint32_t        bits;                // bits of the compr. image packet
   vvdecVui       *vui;                 // if available, pointer to VUI (Video Usability Information)
   vvdecHrd       *hrd;                 // if available, pointer to HRD (Hypothetical Reference Decoder)
@@ -407,7 +407,7 @@ typedef struct vvdecPlane
   unsigned char *ptr;                  // pointer to plane buffer
   uint32_t       width;                // width of the plane
   uint32_t       height;               // height of the plane
-  uint32_t       stride;               // stride (width + left margin + right margins) of plane in samples
+  uint32_t       stride;               // stride (width + left margin + right margins) of plane in bytes
   uint32_t       bytesPerSample;       // number of bytes per sample
   void          *allocator;            // opaque pointer to memory allocator (only valid, when memory is maintained by application)
 } vvdecPlane;

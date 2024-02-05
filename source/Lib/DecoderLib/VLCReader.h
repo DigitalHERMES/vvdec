@@ -6,7 +6,7 @@ the Software are granted under this license.
 
 The Clear BSD License
 
-Copyright (c) 2018-2023, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVdeC Authors.
+Copyright (c) 2018-2024, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVdeC Authors.
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification,
@@ -160,7 +160,7 @@ private:
   template<typename HeaderT>
   void  parsePicOrSliceHeaderRPL ( HeaderT* header, const SPS* sps, const PPS* pps );
   void  parseRefPicList          ( ReferencePictureList* rpl, int rplIdx, const SPS* pcSPS );
-  void  copyRefPicList           ( const SPS* pcSPS, ReferencePictureList* source_rpl, ReferencePictureList* dest_rpl );
+  void  copyRefPicList           ( const SPS* pcSPS, const ReferencePictureList* source_rpl, ReferencePictureList* dest_rpl );
 
   void  checkAlfNaluTidAndPicTid ( const Slice* pcSlice, const PicHeader* picHeader, const ParameterSetManager* parameterSetManager);
 

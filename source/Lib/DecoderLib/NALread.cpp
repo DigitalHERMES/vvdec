@@ -6,7 +6,7 @@ the Software are granted under this license.
 
 The Clear BSD License
 
-Copyright (c) 2018-2023, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVdeC Authors.
+Copyright (c) 2018-2024, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVdeC Authors.
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification,
@@ -102,7 +102,7 @@ static void convertPayloadToRBSP(std::vector<uint8_t>& nalUnitBuf, InputBitstrea
 
     if (n > 0)
     {
-      msg( NOTICE, "\nDetected %d instances of cabac_zero_word\n", n/2);
+      msg( VERBOSE, "\nDetected %d instances of cabac_zero_word\n", n/2);
     }
   }
 

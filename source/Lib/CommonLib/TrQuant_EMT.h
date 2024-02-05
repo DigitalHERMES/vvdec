@@ -6,7 +6,7 @@ the Software are granted under this license.
 
 The Clear BSD License
 
-Copyright (c) 2018-2023, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVdeC Authors.
+Copyright (c) 2018-2024, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVdeC Authors.
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification,
@@ -50,6 +50,7 @@ POSSIBILITY OF SUCH DAMAGE.
 
 namespace vvdec
 {
+using namespace x86_simd;
 
 struct TCoeffOps
 {
@@ -89,4 +90,4 @@ void fastInverseDCT8_B8  (const TCoeff *src, TCoeff *dst, int shift, int line, i
 void fastInverseDCT8_B16 (const TCoeff *src, TCoeff *dst, int shift, int line, int iSkipLine, int iSkipLine2, bool clip, const TCoeff outputMinimum, const TCoeff outputMaximum);
 void fastInverseDCT8_B32 (const TCoeff *src, TCoeff *dst, int shift, int line, int iSkipLine, int iSkipLine2, bool clip, const TCoeff outputMinimum, const TCoeff outputMaximum);
 
-}
+}   // namespace vvdec

@@ -6,7 +6,7 @@ the Software are granted under this license.
 
 The Clear BSD License
 
-Copyright (c) 2018-2023, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVdeC Authors.
+Copyright (c) 2018-2024, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVdeC Authors.
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification,
@@ -79,8 +79,6 @@ void InterpolationFilter::initInterpolationFilterX86( /*int iBitDepthY, int iBit
     break;
 #endif  // !REAL_TARGET_WASM
   case AVX:
-    _initInterpolationFilterX86<AVX>(/*iBitDepthY, iBitDepthC*/);
-    break;
   case SSE42:
   case SSE41:
     _initInterpolationFilterX86<SSE41>(/*iBitDepthY, iBitDepthC*/);
@@ -103,8 +101,6 @@ void PelBufferOps::initPelBufOpsX86()
       break;
 #endif  // !REAL_TARGET_WASM
     case AVX:
-      _initPelBufOpsX86<AVX>();
-      break;
     case SSE42:
     case SSE41:
       _initPelBufOpsX86<SSE41>();
@@ -125,13 +121,12 @@ void RdCost::initRdCostX86()
   switch (vext){
     case AVX512:
     case AVX2:
-#ifndef REAL_TARGET_WASM
+#if defined( REAL_TARGET_WASM ) || ( defined( _MSC_VER ) && _MSC_VER >= 1938 )
+#else
       _initRdCostX86<AVX2>();
       break;
-#endif  // !REAL_TARGET_WASM
+#endif
     case AVX:
-      _initRdCostX86<AVX>();
-      break;
     case SSE42:
     case SSE41:
       _initRdCostX86<SSE41>();
@@ -155,8 +150,6 @@ void AdaptiveLoopFilter::initAdaptiveLoopFilterX86()
     break;
 #endif  // !REAL_TARGET_WASM
   case AVX:
-    _initAdaptiveLoopFilterX86<AVX>();
-    break;
   case SSE42:
   case SSE41:
     _initAdaptiveLoopFilterX86<SSE41>();
@@ -180,8 +173,6 @@ void LoopFilter::initLoopFilterX86()
     break;
 #endif  // !REAL_TARGET_WASM
   case AVX:
-    _initLoopFilterX86<AVX>();
-    break;
   case SSE42:
   case SSE41:
     _initLoopFilterX86<SSE41>();
@@ -206,8 +197,6 @@ void TCoeffOps::initTCoeffOpsX86()
     break;
 #endif  // !REAL_TARGET_WASM
   case AVX:
-    _initTCoeffOpsX86<AVX>();
-    break;
   case SSE42:
   case SSE41:
     _initTCoeffOpsX86<SSE41>();
@@ -230,8 +219,6 @@ void TrQuant::initTrQuantX86()
     break;
 #endif  // !REAL_TARGET_WASM
   case AVX:
-    _initTrQuantX86<AVX>();
-    break;
   case SSE42:
   case SSE41:
     _initTrQuantX86<SSE41>();
@@ -254,8 +241,6 @@ void IntraPrediction::initIntraPredictionX86()
       break;
 #endif  // !REAL_TARGET_WASM
     case AVX:
-      _initIntraPredictionX86<AVX>();
-      break;
     case SSE42:
     case SSE41:
       _initIntraPredictionX86<SSE41>();
@@ -279,8 +264,6 @@ void SampleAdaptiveOffset::initSampleAdaptiveOffsetX86()
       break;
 #endif  // !REAL_TARGET_WASM
     case AVX:
-      _initSampleAdaptiveOffsetX86<AVX>();
-      break;
     case SSE42:
     case SSE41:
       _initSampleAdaptiveOffsetX86<SSE41>();
@@ -305,8 +288,6 @@ void InterPrediction::initInterPredictionX86()
       break;
 #endif  // !REAL_TARGET_WASM
     case AVX:
-      _initInterPredictionX86<AVX>();
-      break;
     case SSE42:
     case SSE41:
       _initInterPredictionX86<SSE41>();
@@ -330,8 +311,6 @@ void Picture::initPictureX86()
       break;
 #endif  // !REAL_TARGET_WASM
     case AVX:
-      _initPictureX86<AVX>();
-      break;
     case SSE42:
     case SSE41:
       _initPictureX86<SSE41>();
@@ -355,8 +334,6 @@ void Quant::initQuantX86()
       break;
 #endif  // !REAL_TARGET_WASM
     case AVX:
-      _initQuantX86<AVX>();
-      break;
     case SSE42:
     case SSE41:
       _initQuantX86<SSE41>();

@@ -6,7 +6,7 @@ the Software are granted under this license.
 
 The Clear BSD License
 
-Copyright (c) 2018-2023, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVdeC Authors.
+Copyright (c) 2018-2024, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVdeC Authors.
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification,
@@ -51,19 +51,10 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "DecoderLib/NALread.h"
 #include "CommonLib/CommonDef.h"
 #include "CommonLib/x86/CommonDefX86.h"
+#include "CommonLib/arm/CommonDefARM.h"
 
 
 namespace vvdec {
-
-VVDecImpl::VVDecImpl()
-{
-
-}
-
-VVDecImpl::~VVDecImpl()
-{
-
-}
 
 int VVDecImpl::init( const vvdecParams& params, vvdecCreateBufferCallback createBufCallback, vvdecUnrefBufferCallback unrefBufCallback )
 {
@@ -74,19 +65,27 @@ int VVDecImpl::init( const vvdecParams& params, vvdecCreateBufferCallback create
 #ifdef TARGET_SIMD_X86
     switch( params.simd )
     {
-    case VVDEC_SIMD_SCALAR: read_x86_extension_flags( SCALAR ); break;
-#if defined( VVDEC_ARCH_X86 )
-    case VVDEC_SIMD_SSE41 : read_x86_extension_flags( SSE41  ); break;
-    case VVDEC_SIMD_SSE42 : read_x86_extension_flags( SSE42  ); break;
-    case VVDEC_SIMD_AVX   : read_x86_extension_flags( AVX    ); break;
-    case VVDEC_SIMD_AVX2  : read_x86_extension_flags( AVX2   ); break;
-#elif defined( VVDEC_ARCH_ARM ) || defined( VVDEC_ARCH_WASM )
+    case VVDEC_SIMD_SCALAR: read_x86_extension_flags( x86_simd::SCALAR ); break;
+#  if defined( VVDEC_ARCH_X86 )
+    case VVDEC_SIMD_SSE41 : read_x86_extension_flags( x86_simd::SSE41  ); break;
+    case VVDEC_SIMD_SSE42 : read_x86_extension_flags( x86_simd::SSE42  ); break;
+    case VVDEC_SIMD_AVX   : read_x86_extension_flags( x86_simd::AVX    ); break;
+    case VVDEC_SIMD_AVX2  : read_x86_extension_flags( x86_simd::AVX2   ); break;
+#  elif defined( VVDEC_ARCH_ARM ) || defined( VVDEC_ARCH_WASM )
     case VVDEC_SIMD_MAX   : read_x86_extension_flags( SIMD_EVERYWHERE_EXTENSION_LEVEL ); break;
-#endif
+#  endif
     case VVDEC_SIMD_DEFAULT:
-    default:                read_x86_extension_flags( UNDEFINED ); break;
+    default:                read_x86_extension_flags( x86_simd::UNDEFINED ); break;
     }
-#endif // TARGET_SIMD_X86
+#endif   // TARGET_SIMD_X86
+
+#ifdef TARGET_SIMD_ARM
+    switch( params.simd )
+    {
+    case VVDEC_SIMD_SCALAR : read_arm_extension_flags( arm_simd::SCALAR );    break;
+    default:                 read_arm_extension_flags( arm_simd::UNDEFINED ); break;
+    }
+#endif   // TARGET_SIMD_ARM
 
     if( createBufCallback && unrefBufCallback )
     {
@@ -181,7 +180,7 @@ int VVDecImpl::reset()
     vvdecFrame* frame= NULL;
 
     // flush the decoder
-    int iRet = flush( &frame );
+    int iRet = catchExceptions( &VVDecImpl::flush, &frame );
     if( iRet != 0 )  {  bFlushDecoder = false; }
 
     if( frame  )
@@ -196,20 +195,16 @@ int VVDecImpl::reset()
     }
   };
 
-  for( auto& frame : m_rcFrameList )
+  for( auto& entry: m_rcFrameList )
   {
-    vvdec_frame_reset( &frame );
+    vvdec_frame_reset( &std::get<vvdecFrame>( entry ) );
+    if( std::get<Picture*>( entry ) )
+    {
+      m_cDecLib->releasePicture( std::get<Picture*>( entry ) );
+    }
   }
   m_rcFrameList.clear();
   m_pcFrameNext = m_rcFrameList.end();
-
-
-  for( auto& pic : m_pcLibPictureList )
-  {
-    m_cDecLib->releasePicture( pic );
-  }
-  m_pcLibPictureList.clear();
-
 
   for( auto& storage : m_cFrameStorageMap )
   {
@@ -266,7 +261,7 @@ int VVDecImpl::decode( vvdecAccessUnit& rcAccessUnit, vvdecFrame** ppcFrame )
     return setAndRetErrorMsg( VVDEC_ERR_DEC_INPUT, "payloadUsedSize must be <= payloadSize" );
   }
 
-  int iRet= VVDEC_OK;
+  int iRet = VVDEC_OK;
 
   try
   {
@@ -384,7 +379,7 @@ int VVDecImpl::decode( vvdecAccessUnit& rcAccessUnit, vvdecFrame** ppcFrame )
           pcPic = m_cDecLib->decode( nalu );
 
           iRet = xHandleOutput( pcPic );
-          if( 0 != iRet )
+          if( VVDEC_OK != iRet )
           {
             return iRet;
           }
@@ -427,7 +422,7 @@ int VVDecImpl::decode( vvdecAccessUnit& rcAccessUnit, vvdecFrame** ppcFrame )
       }
       else
       {
-        *ppcFrame = &( *m_pcFrameNext );
+        *ppcFrame = &std::get<vvdecFrame>( *m_pcFrameNext );
         m_uiSeqNumOutput = (*ppcFrame)->sequenceNumber;
         ++m_pcFrameNext;
       }
@@ -441,8 +436,12 @@ int VVDecImpl::decode( vvdecAccessUnit& rcAccessUnit, vvdecFrame** ppcFrame )
       }
     }
   }
+  // Only catch recoverable exceptions here, because that is handled differently between decode() and flush().
+  // Everything else should be caught by the catchExceptions() wrapper.
   catch( RecoverableException& e )
   {
+    m_cErrorString = "(possibly recoverable) exception";
+
     std::stringstream css;
     if( m_eState == INTERNAL_STATE_TUNING_IN )
     {
@@ -458,35 +457,8 @@ int VVDecImpl::decode( vvdecAccessUnit& rcAccessUnit, vvdecFrame** ppcFrame )
       m_cAdditionalErrorString = css.str();
       return VVDEC_ERR_DEC_INPUT;
     }
-    m_eState = INTERNAL_STATE_RESTART_REQUIRED;
-    return VVDEC_ERR_RESTART_REQUIRED;
-  }
-  catch( UnsupportedFeatureException& e )
-  {
-    std::stringstream css;
-    css << "caught exception for unsupported feature " << e.what();
-    m_cErrorString = "unsupported feature detected";
-    m_cAdditionalErrorString = css.str();
-    m_eState = INTERNAL_STATE_NOT_SUPPORTED;
-    return VVDEC_ERR_NOT_SUPPORTED;
-  }
-  catch( std::overflow_error& e )
-  {
-    //assert( 0 );
-    std::stringstream css;
-    css << "caught overflow exception " << e.what();
-    m_cAdditionalErrorString = css.str();
-    m_eState = INTERNAL_STATE_RESTART_REQUIRED;
-    return VVDEC_ERR_RESTART_REQUIRED;
-  }
-  catch( std::exception& e )
-  {
-    //assert( 0 );
-    std::stringstream css;
-    css << "caught unknown exception " << e.what();
-    m_cErrorString = "caught unknown exception";
-    m_cAdditionalErrorString = css.str();
-    m_eState = INTERNAL_STATE_RESTART_REQUIRED;
+    m_cAdditionalErrorString = std::string( "Exception occured: " ) + e.what();
+    m_eState                 = INTERNAL_STATE_RESTART_REQUIRED;
     return VVDEC_ERR_RESTART_REQUIRED;
   }
 
@@ -495,6 +467,8 @@ int VVDecImpl::decode( vvdecAccessUnit& rcAccessUnit, vvdecFrame** ppcFrame )
 
 int VVDecImpl::flush( vvdecFrame** ppframe )
 {
+  *ppframe = nullptr;
+
   if( !m_bInitialized ){ return VVDEC_ERR_INITIALIZE; }
 
   if( m_eState == INTERNAL_STATE_INITIALIZED )      { m_cErrorString = "decoder did not receive any data to decode, cannot flush"; return VVDEC_ERR_RESTART_REQUIRED; }
@@ -540,9 +514,9 @@ int VVDecImpl::flush( vvdecFrame** ppframe )
       }
       else
       {
-        *ppframe = &( *m_pcFrameNext );
-        m_uiSeqNumOutput = (*ppframe)->sequenceNumber;
-        ++m_pcFrameNext;
+         *ppframe = &std::get<vvdecFrame>( *m_pcFrameNext );
+         m_uiSeqNumOutput = ( *ppframe )->sequenceNumber;
+         ++m_pcFrameNext;
       }
     }
     else
@@ -552,8 +526,12 @@ int VVDecImpl::flush( vvdecFrame** ppframe )
       m_eState = INTERNAL_STATE_FINALIZED;
     }
   }
+  // Only catch recoverable exceptions here, because that is handled differently between decode() and flush().
+  // Everything else should be caught by the catchExceptions() wrapper.
   catch( RecoverableException& e )
   {
+    m_cErrorString = "(possibly recoverable) exception";
+
     std::stringstream css;
     if( m_eErrHandlingFlags & ERR_HANDLING_TRY_CONTINUE )
     {
@@ -562,32 +540,8 @@ int VVDecImpl::flush( vvdecFrame** ppframe )
       m_cAdditionalErrorString = css.str();
       return VVDEC_ERR_DEC_INPUT;
     }
-    m_eState = INTERNAL_STATE_RESTART_REQUIRED;
-    return VVDEC_ERR_RESTART_REQUIRED;
-  }
-  catch( UnsupportedFeatureException& e )
-  {
-    std::stringstream css;
-    css << "caught exception for unsupported feature " << e.what();
-    m_cErrorString = "unsupported feature detected";
-    m_cAdditionalErrorString = css.str();
-    m_eState = INTERNAL_STATE_NOT_SUPPORTED;
-    return VVDEC_ERR_NOT_SUPPORTED;
-  }
-  catch( std::overflow_error& e )
-  {
-    std::stringstream css;
-    css << "caught overflow exception " << e.what();
-    m_cAdditionalErrorString = css.str();
-    m_eState = INTERNAL_STATE_RESTART_REQUIRED;
-    return VVDEC_ERR_RESTART_REQUIRED;
-  }
-  catch( std::exception& e )
-  {
-    std::stringstream css;
-    css << "caught unknown exception " << e.what();
-    m_cAdditionalErrorString = css.str();
-    m_eState = INTERNAL_STATE_RESTART_REQUIRED;
+    m_cAdditionalErrorString = std::string( "Exception occured: " ) + e.what();
+    m_eState                 = INTERNAL_STATE_RESTART_REQUIRED;
     return VVDEC_ERR_RESTART_REQUIRED;
   }
 
@@ -611,27 +565,16 @@ vvdecSEI* VVDecImpl::findFrameSei( vvdecSEIPayloadType payloadType, vvdecFrame *
   }
 
   Picture* picture = nullptr;
-  for ( auto& pic : m_pcLibPictureList )
+  for( auto& entry: m_rcFrameList )
   {
-    if( frame->picAttributes != NULL )
+    if( frame == &std::get<vvdecFrame>( entry ) )
     {
-      if( frame->picAttributes->poc == (uint64_t)pic->poc )
-      {
-        picture = pic;
-        break;
-      }
-    }
-    else
-    {
-      if( frame->ctsValid && frame ->cts == pic->cts )
-      {
-        picture = pic;
-        break;
-      }
+      picture = std::get<Picture*>( entry );
+      break;
     }
   }
 
-  if( picture == nullptr)
+  if( picture == nullptr )
   {
     msg(VERBOSE, "findFrameSei: cannot find pictue in internal list.\n");
     return nullptr;
@@ -660,44 +603,22 @@ int VVDecImpl::objectUnref( vvdecFrame* pcFrame )
     return VVDEC_ERR_UNSPECIFIED;
   }
 
-  bool bPicFound = false;
-  for( auto& pic : m_rcFrameList )
+  for( auto it = m_rcFrameList.begin(); it != m_rcFrameList.end(); ++it )
   {
-    if( &pic == pcFrame )
+    vvdecFrame* frame = &std::get<vvdecFrame>( *it );
+    if( frame == pcFrame )
     {
-      bPicFound = true;
-      vvdec_frame_reset( &pic );
-      break;
+      vvdec_frame_reset( frame );
+      if( std::get<Picture*>( *it ) )
+      {
+        m_cDecLib->releasePicture( std::get<Picture*>( *it ) );
+      }
+      m_rcFrameList.erase( it );
+      return VVDEC_OK;
     }
   }
 
-  if( bPicFound )
-  {
-    std::list<vvdecFrame>::iterator itFrame = m_rcFrameList.end();
-    for( std::list<vvdecFrame>::iterator it = m_rcFrameList.begin(); it != m_rcFrameList.end(); it++ )
-    {
-       if( &*it == pcFrame )
-       {
-           itFrame = it;
-           break;
-       }
-    }
-    if( itFrame != m_rcFrameList.end())
-    {
-      m_rcFrameList.erase(itFrame);
-    }
-    else
-    {
-      m_cErrorString = "objectUnref() cannot find picture in picture list";
-      return VVDEC_ERR_UNSPECIFIED;
-    }
-  }
-  else
-  {
-    return VVDEC_ERR_UNSPECIFIED;
-  }
-
-  return VVDEC_OK;
+  return VVDEC_ERR_UNSPECIFIED;
 }
 
 int VVDecImpl::getNumberOfErrorsPictureHashSEI()
@@ -749,7 +670,7 @@ const char* VVDecImpl::getVersionNumber()
 
 const char* VVDecImpl::getDecoderInfo()
 {
-    m_sDecoderInfo  = "Fraunhofer VVC/H.266 Decoder VVdeC";
+    m_sDecoderInfo  = "VVdeC, the Fraunhofer VVC/H.266 decoder";
     m_sDecoderInfo += ", version ";
     m_sDecoderInfo += getVersionNumber();
     m_sDecoderInfo += " [";
@@ -817,7 +738,7 @@ vvdecNalType VVDecImpl::getNalUnitType ( vvdecAccessUnit& rcAccessUnit )
   if( found )
   {
     unsigned char uc = pcBuf[iOffset];
-    int nalUnitType   = ((uc >> 3) & 0x1F ); 
+    int nalUnitType   = ((uc >> 3) & 0x1F );
     eNalType = (vvdecNalType)nalUnitType;
   }
 
@@ -983,12 +904,12 @@ int VVDecImpl::xAddPicture( Picture* pcPic )
     {
       PelStorage upscaledPic;
       upscaledPic.create( cPicBuf.chromaFormat, Size( orgWidth, orgHeight ), 0, 0, 0, true, &m_cUserAllocator );
-      
+
       int xScale = ( ( uiWidth  << SCALE_RATIO_BITS ) + ( orgWidth  >> 1 ) ) / orgWidth;
       int yScale = ( ( uiHeight << SCALE_RATIO_BITS ) + ( orgHeight >> 1 ) ) / orgHeight;
 
       upscaledPic.rescaleBuf( cPicBuf, std::pair<int, int>( xScale, yScale ), conf, defDisp, bitDepths, pcPic->cs->sps->getHorCollocatedChromaFlag(), pcPic->cs->sps->getVerCollocatedChromaFlag() );
-      
+
       // copy picture into target memory
       for( int comp=0; comp < maxComponent; comp++ )
       {
@@ -1046,7 +967,6 @@ int VVDecImpl::xAddPicture( Picture* pcPic )
 
       cFrame.planes[comp].ptr = (unsigned char*)(planeOrigin + planeOffset);
     }
-    m_pcLibPictureList.push_back( pcPic );
   }
 
   // set picture attributes
@@ -1056,10 +976,8 @@ int VVDecImpl::xAddPicture( Picture* pcPic )
   cFrame.picAttributes->poc           = pcPic->poc;
   cFrame.picAttributes->temporalLayer = pcPic->getTLayer();
   cFrame.picAttributes->bits          = pcPic->getNaluBits();
-
   cFrame.picAttributes->nalType       = (vvdecNalType)pcPic->eNalUnitType;
-
-  cFrame.picAttributes->isRefPic = pcPic->referenced;
+  cFrame.picAttributes->isRefPic      = pcPic->isReferencePic;
 
   if( pcPic->fieldPic )
   {
@@ -1125,7 +1043,7 @@ int VVDecImpl::xAddPicture( Picture* pcPic )
         cFrame.picAttributes->hrd->hrdCpbCnt                        = hrd->getHrdCpbCntMinus1()+1;
       }
     }
-    
+
     if( pcPic->slices.front()->getSPS()->getOlsHrdParameters() )
     {
       const OlsHrdParams* ols = pcPic->slices.front()->getSPS()->getOlsHrdParameters();
@@ -1156,7 +1074,7 @@ int VVDecImpl::xAddPicture( Picture* pcPic )
     }
   }
 
-  m_rcFrameList.push_back( cFrame );
+  m_rcFrameList.emplace_back( cFrame, bCreateStorage ? nullptr : pcPic );
 
   if( m_pcFrameNext == m_rcFrameList.end() )
   {
@@ -1166,9 +1084,9 @@ int VVDecImpl::xAddPicture( Picture* pcPic )
     }
     else
     {
-      for( std::list<vvdecFrame>::iterator it = m_rcFrameList.begin(); it != m_rcFrameList.end(); it++ )
+      for( auto it = m_rcFrameList.begin(); it != m_rcFrameList.end(); it++ )
       {
-        if(  (*it).sequenceNumber > m_uiSeqNumOutput )
+        if( std::get<vvdecFrame>( *it ).sequenceNumber > m_uiSeqNumOutput )
         {
           m_pcFrameNext = it;
           break;
@@ -1179,7 +1097,7 @@ int VVDecImpl::xAddPicture( Picture* pcPic )
 
   m_uiSeqNumber++;
 
-  if ( bCreateStorage   )
+  if( bCreateStorage )
   {
     // release library picture storage, because picture has been copied into new storage class
     m_cDecLib->releasePicture( pcPic );
@@ -1296,7 +1214,7 @@ int VVDecImpl::xCreateFrame( vvdecFrame& rcFrame, const CPelUnitBuf& rcPicBuf, u
     if( nBufSize == 0 ){ return VVDEC_ERR_ALLOCATE; }
 
     FrameStorage frameStorage;
-    
+
     if( m_cUserAllocator.enabled )
     {
       frameStorage.setExternAllocator();
@@ -1319,7 +1237,7 @@ int VVDecImpl::xCreateFrame( vvdecFrame& rcFrame, const CPelUnitBuf& rcPicBuf, u
     {
       frameStorage.allocateStorage( nBufSize );
       rcFrame.planes[VVDEC_CT_Y].ptr = frameStorage.getStorage();
-            
+
       switch( rcPicBuf.chromaFormat )
       {
         case CHROMA_400:
@@ -1333,7 +1251,7 @@ int VVDecImpl::xCreateFrame( vvdecFrame& rcFrame, const CPelUnitBuf& rcPicBuf, u
         default: break;
       }
     }
-    m_cFrameStorageMap.insert( frameStorageMapType( rcFrame.sequenceNumber, frameStorage));
+    m_cFrameStorageMap.insert( FrameStorageMapType( rcFrame.sequenceNumber, std::move( frameStorage ) ) );
   }
 
   return 0;
@@ -1415,7 +1333,7 @@ int VVDecImpl::xConvertPayloadToRBSP( std::vector<uint8_t>& nalUnitBuf, InputBit
 
     if (n > 0)
     {
-      msg( NOTICE, "\nDetected %d instances of cabac_zero_word\n", n/2);
+      msg( VERBOSE, "\nDetected %d instances of cabac_zero_word\n", n/2);
     }
   }
 
@@ -1491,7 +1409,7 @@ int VVDecImpl::xHandleOutput( Picture* pcPic )
 */
 bool VVDecImpl::isFrameConverted( vvdecFrame* frame )
 {
-  frameStorageMap::iterator storageIter =  m_cFrameStorageMap.find( frame->sequenceNumber );
+  FrameStorageMap::iterator storageIter =  m_cFrameStorageMap.find( frame->sequenceNumber );
   if( storageIter != m_cFrameStorageMap.end() )
   {
     if( storageIter->second.isAllocated() || storageIter->second.isExternAllocator() )
@@ -1543,17 +1461,15 @@ void VVDecImpl::vvdec_plane_default(vvdecPlane *plane)
   plane->allocator = nullptr;    ///< opaque pointer to memory allocator (only valid, when memory is maintained by caller)
 }
 
-void VVDecImpl::vvdec_frame_reset(vvdecFrame *frame )
+void VVDecImpl::vvdec_frame_reset(vvdecFrame *frame)
 {
-  bool bIsInternalLibStorage = true;
-  bool bIsExternAllocator    = false;
-  frameStorageMap::iterator storageIter =  m_cFrameStorageMap.find( frame->sequenceNumber );
+  bool bIsExternAllocator = false;
+  FrameStorageMap::iterator storageIter = m_cFrameStorageMap.find( frame->sequenceNumber );
   if( storageIter != m_cFrameStorageMap.end() )
   {
     if( storageIter->second.isAllocated() )
     {
       storageIter->second.freeStorage();
-      bIsInternalLibStorage = false;
     }
     else if( storageIter->second.isExternAllocator() )
     {
@@ -1561,20 +1477,6 @@ void VVDecImpl::vvdec_frame_reset(vvdecFrame *frame )
     }
 
     m_cFrameStorageMap.erase (storageIter);
-  }
-
-  if( bIsInternalLibStorage )
-  {
-    // release internal picture memory
-    for( std::list<Picture*>::iterator itLibPic = m_pcLibPictureList.begin(); itLibPic != m_pcLibPictureList.end();  itLibPic++ )
-    {
-      if( (*itLibPic)->cts == frame->cts )
-      {
-        m_cDecLib->releasePicture( *itLibPic );
-        m_pcLibPictureList.erase( itLibPic );
-        break;
-      }
-    }
   }
 
   if( frame->picAttributes )
