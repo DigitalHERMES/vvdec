@@ -91,7 +91,7 @@ endif()
 
 # set common warning flags
 add_compile_options( "$<$<OR:$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>>:-Wall;-Wno-unused-function;-Wno-enum-compare-switch;-Wno-unknown-attributes>" )
-add_compile_options( "$<$<CXX_COMPILER_ID:GNU>:-Wall;-Wno-unused-function;-Wno-sign-compare;-fdiagnostics-show-option;-Wno-ignored-attributes>" )
+add_compile_options( "$<$<CXX_COMPILER_ID:GNU>:-Wall;-Wno-unused-function;-Wno-maybe-uninitialized;-Wno-sign-compare;-fdiagnostics-show-option;-Wno-ignored-attributes>" )
 add_compile_options( "$<$<CXX_COMPILER_ID:MSVC>:/W4;/wd4100;/wd4127;/wd4244;/wd4245;/wd4389;/wd4456;/wd4457;/wd4458;/wd4459;/wd4505;/wd4701;/wd4702;/wd4703>" )
 
 
