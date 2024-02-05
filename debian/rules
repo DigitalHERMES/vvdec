@@ -1,9 +1,5 @@
 #!/usr/bin/make -f
 
-ifeq ($(DEB_HOST_ARCH_CPU),amd64)
-	confflags=-DVVDEC_ENABLE_X86_SIMD=TRUE
-endif
-
 %:
 	dh $@ -Scmake+ninja --with quilt
 
