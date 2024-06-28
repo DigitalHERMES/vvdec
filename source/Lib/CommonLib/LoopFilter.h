@@ -48,7 +48,6 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #include "CommonDef.h"
 #include "Unit.h"
-#include "Picture.h"
 
 //! \ingroup CommonLib
 //! \{
@@ -77,7 +76,7 @@ private:
 
   // filtering functions
   template<DeblockEdgeDir edgeDir>
-  void xGetBoundaryStrengthSingle ( LoopFilterParam& lfp, const CodingUnit& cu, const Position &localPos, const CodingUnit &cuP, CtuData& ctuData, bool pqSameCtu ) const;
+  void xGetBoundaryStrengthSingle ( LoopFilterParam& lfp, const CodingUnit& cu, const Position &localPos, const CodingUnit &cuP, CtuData& ctuData, bool pqSameCtu, bool useSimd ) const;
   template<DeblockEdgeDir edgeDir>
   void xSetEdgeFilterInsidePu     ( const CodingUnit &cu, const Area &area, const bool bValue, CtuData& ctuData ) const;
 

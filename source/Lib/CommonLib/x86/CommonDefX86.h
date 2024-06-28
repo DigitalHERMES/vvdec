@@ -49,6 +49,13 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #ifdef TARGET_SIMD_X86
 
+#ifdef _WIN32
+# define WIN32_LEAN_AND_MEAN
+// wingdi.h breaks compilation (why only on arm?). It defines some
+// constants like ERROR (included by windows.h, included by simd-everywhere)
+# define NOGDI
+#endif
+
 #  if REAL_TARGET_X86 || REAL_TARGET_WASM
 #    ifdef _WIN32
 #      include <intrin.h>
@@ -76,6 +83,13 @@ POSSIBILITY OF SUCH DAMAGE.
 #  elif defined USE_SSE41
 #    define SIMDX86 SSE41
 #    include <simde/x86/sse4.1.h>
+#  endif
+
+#  if defined( REAL_TARGET_X86 ) \
+    || ( defined( SIMD_EVERYWHERE_EXTENSION_LEVEL_ID ) && SIMD_EVERYWHERE_EXTENSION_LEVEL_ID >= X86_SIMD_AVX2 )
+#    define ENABLE_AVX2_IMPLEMENTATIONS 1
+#  else
+#    define ENABLE_AVX2_IMPLEMENTATIONS 0
 #  endif
 
 namespace vvdec

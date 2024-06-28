@@ -47,6 +47,7 @@ POSSIBILITY OF SUCH DAMAGE.
 
 namespace vvdec {
 
+class FilmGrain;
 
 static const char * const vvdecNalTypeNames[] = { "NAL_UNIT_CODED_SLICE_TRAIL", "NAL_UNIT_CODED_SLICE_STSA", "NAL_UNIT_CODED_SLICE_RADL", "NAL_UNIT_CODED_SLICE_RASL",
                                                   "NAL_UNIT_RESERVED_VCL_4", "NAL_UNIT_RESERVED_VCL_5", "NAL_UNIT_RESERVED_VCL_6",
@@ -98,11 +99,8 @@ public:
 
 public:
 
-  /// Constructor
-  VVDecImpl() = default;
-
-  /// Destructor
-  ~VVDecImpl() = default;
+  VVDecImpl();
+  ~VVDecImpl();
 
   class FrameStorage
   {
@@ -176,10 +174,19 @@ public:
 
 private:
   int xAddPicture                  ( Picture* pcPic );
-  int xCreateFrame                 ( vvdecFrame& frame, const CPelUnitBuf& rcPicBuf, uint32_t uiWidth, uint32_t uiHeight, const BitDepths& rcBitDepths, bool bCreateStorage );
+  int xCreateFrame                 ( vvdecFrame&        frame,
+                                     const CPelUnitBuf& rcPicBuf,
+                                     uint32_t           uiWidth,
+                                     uint32_t           uiHeight,
+                                     const BitDepths&   rcBitDepths,
+                                     bool               bCreateStorage,
+                                     bool               origStride = false );
+
+  void xUpdateFGC                  ( vvdecSEI *sei );
+  void xAddGrain                   ( vvdecFrame *frame );
 
   static int xRetrieveNalStartCode ( unsigned char *pB, int iZerosInStartcode );
-  static int xConvertPayloadToRBSP ( std::vector<uint8_t>& nalUnitBuf, InputBitstream *bitstream, bool isVclNalUnit);
+  static int xConvertPayloadToRBSP ( const uint8_t* payload, size_t payloadLen, InputBitstream* bitstream, bool isVclNalUnit );
   static int xReadNalUnitHeader    ( InputNALUnit& nalu );
 
   int xHandleOutput( Picture* pcPic );
@@ -215,17 +222,28 @@ private:
 
   uint64_t                                 m_uiSeqNumber       = 0;
   uint64_t                                 m_uiSeqNumOutput    = 0;
+#if ENABLE_FILM_GRAIN
+  enum
+  {
+    FgcNone        = 0,
+    FgcDontPersist = 1,
+    FgcPersist     = 2
+  }                                        m_filmGrainCharacteristicsState = FgcNone;
+  bool                                     m_enableFilmGrain               = false;
+  std::unique_ptr<FilmGrain>               m_filmGrainSynth;
+#endif   // ENABLE_FILM_GRAIN
 };
 
 template<class MembFunc, class... Args>
 inline auto VVDecImpl::catchExceptions( MembFunc fn, Args... args )
 {
-  using TRet = decltype( ( this->*fn )( args... ) );
-  // helper to either return an error value or nullptr based on the wrapped function's return type
+  using TRet = decltype( ( this->*fn )( args... ) ); // return type of the wapped function
+
+  // helper function to either return an error value or a null-pointer based on the wrapped function's return type
   static auto returnErrOrNullptr = []( intptr_t err )
   {
     if( std::is_pointer<TRet>() )
-      return (TRet) NULL;
+      return (TRet) 0;
     return (TRet) err;
   };
 

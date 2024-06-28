@@ -128,9 +128,9 @@ static inline void xBilinearFilter( Pel* srcP, Pel* srcQ, ptrdiff_t offset, int 
 
 void xFilteringPandQCore( Pel* src, ptrdiff_t step, const ptrdiff_t offset, int numberPSide, int numberQSide, int tc )
 {
-  CHECK_RECOVERABLE( numberPSide <= 3 && numberQSide <= 3, "Short filtering in long filtering function" );
-  CHECK_RECOVERABLE( numberPSide != 3 && numberPSide != 5 && numberPSide != 7, "invalid numberPSide" );
-  CHECK_RECOVERABLE( numberQSide != 3 && numberQSide != 5 && numberQSide != 7, "invalid numberQSide" );
+  CHECK( numberPSide <= 3 && numberQSide <= 3, "Short filtering in long filtering function" );
+  CHECK( numberPSide != 3 && numberPSide != 5 && numberPSide != 7, "invalid numberPSide" );
+  CHECK( numberQSide != 3 && numberQSide != 5 && numberQSide != 7, "invalid numberQSide" );
 
   const int*       dbCoeffsP    = numberPSide == 7 ? dbCoeffs7 : ( numberPSide == 5 ) ? dbCoeffs5 : dbCoeffs3;
   const int*       dbCoeffsQ    = numberQSide == 7 ? dbCoeffs7 : ( numberQSide == 5 ) ? dbCoeffs5 : dbCoeffs3;
@@ -526,8 +526,8 @@ void LoopFilter::calcFilterStrengths( const CodingUnit& cu ) const
                                                                             horVirBndryPos, verVirBndryPos );
   if( isCuCrossedByVirtualBoundaries )
   {
-    CHECK_RECOVERABLE( numHorVirBndry >= (int)( sizeof(horVirBndryPos) / sizeof(horVirBndryPos[0]) ), "Too many virtual boundaries" );
-    CHECK_RECOVERABLE( numHorVirBndry >= (int)( sizeof(verVirBndryPos) / sizeof(verVirBndryPos[0]) ), "Too many virtual boundaries" );
+    CHECK( numHorVirBndry >= (int)( sizeof(horVirBndryPos) / sizeof(horVirBndryPos[0]) ), "Too many virtual boundaries" );
+    CHECK( numHorVirBndry >= (int)( sizeof(verVirBndryPos) / sizeof(verVirBndryPos[0]) ), "Too many virtual boundaries" );
   }
   
 
@@ -573,7 +573,7 @@ void LoopFilter::calcFilterStrengths( const CodingUnit& cu ) const
 
   if( ( currPU.mergeFlag() && currPU.mergeType() == MRG_TYPE_SUBPU_ATMVP ) || currPU.affineFlag() )
   {
-    CHECK_RECOVERABLE( cu.chType() != CH_L, "This path is only valid for single tree blocks!" );
+    CHECK( cu.chType() != CH_L, "This path is only valid for single tree blocks!" );
 
     for( int off = subBlockSize; off < areaPu.width; off += subBlockSize )
     {
@@ -610,6 +610,11 @@ void LoopFilter::calcFilterStrengths( const CodingUnit& cu ) const
     xSetMaxFilterLengthPQForCodingSubBlocks<EDGE_HOR>( cu, ctuData );
   }
 
+#if ENABLE_SIMD_DBLF && defined( TARGET_SIMD_X86 )
+  const bool           useSimd = read_x86_extension_flags() > x86_simd::SCALAR;
+#else
+  const bool           useSimd = false;
+#endif
   const unsigned uiPelsInPartX = pcv.minCUWidth >> channelScaleX;
   const unsigned uiPelsInPartY = pcv.minCUHeight >> channelScaleY;
   const ptrdiff_t       lfpPos = cu.cs->inCtuPos( area.pos(), cu.chType() );
@@ -630,7 +635,7 @@ void LoopFilter::calcFilterStrengths( const CodingUnit& cu ) const
 
       for( int x = 0; x < area.width; x += uiPelsInPartX )
       {
-        if( lineLfpPtrV->filterEdge( cu.chType() ) ) xGetBoundaryStrengthSingle<EDGE_VER>( *lineLfpPtrV, cu, Position{ area.x + x, area.y + y }, x ? cu : *cuP, ctuData, x ? true : pqCuSameCtuVer );
+        if( lineLfpPtrV->filterEdge( cu.chType() ) ) xGetBoundaryStrengthSingle<EDGE_VER>( *lineLfpPtrV, cu, Position{ area.x + x, area.y + y }, x ? cu : *cuP, ctuData, x ? true : pqCuSameCtuVer, useSimd );
 
         lineLfpPtrV->bs &= ~BsSet( 3, MAX_NUM_COMPONENT );
 
@@ -656,7 +661,7 @@ void LoopFilter::calcFilterStrengths( const CodingUnit& cu ) const
       {
         cuP = ( y || ( cuP && cuP->blocks[chType].x + cuP->blocks[chType].width > area.x + x ) ) ? cuP : cu.cs->getCU( Position{ area.x + x, area.y - 1 }, chType );
 
-        if( lineLfpPtrH->filterEdge( cu.chType() ) ) xGetBoundaryStrengthSingle<EDGE_HOR>( *lineLfpPtrH, cu, Position{ area.x + x, area.y + y }, y ? cu : *cuP, ctuData, y ? true : pqCuSameCtuHor );
+        if( lineLfpPtrH->filterEdge( cu.chType() ) ) xGetBoundaryStrengthSingle<EDGE_HOR>( *lineLfpPtrH, cu, Position{ area.x + x, area.y + y }, y ? cu : *cuP, ctuData, y ? true : pqCuSameCtuHor, useSimd );
 
         lineLfpPtrH->bs &= ~BsSet( 3, MAX_NUM_COMPONENT );
 
@@ -783,10 +788,15 @@ void LoopFilter::xSetMaxFilterLengthPQFromTransformSizes( const CodingUnit& cu, 
 {
   const PreCalcValues &pcv = *cu.cs->pcv;
 
-  ChannelType start = CH_L;
-  ChannelType end   = CH_C;
+  ChannelType start  = CH_L;
+  ChannelType end    = CH_C;
 
-  const bool dt = CU::isSepTree( cu );
+  const bool      dt = CU::isSepTree( cu );
+#if ENABLE_SIMD_DBLF && defined( TARGET_SIMD_X86 )
+  const bool useSimd = read_x86_extension_flags() > x86_simd::SCALAR;
+#else
+  const bool useSimd = false;
+#endif
 
   if( dt )
   {
@@ -855,7 +865,7 @@ void LoopFilter::xSetMaxFilterLengthPQFromTransformSizes( const CodingUnit& cu, 
 
             lfp.setFilterCMFL( ( sizeQSide >= 8 && sizePSide >= 8 ) ? 1 : 0 );
             if( bValue )
-              xGetBoundaryStrengthSingle<edgeDir>( lfp, cu, Position( ( area.x + edgeDir * d ) << csx, ( area.y + ( 1 - edgeDir ) * d ) << csy ), *cuPfstCh, ctuData, pqSameCtu );
+              xGetBoundaryStrengthSingle<edgeDir>( lfp, cu, Position( ( area.x + edgeDir * d ) << csx, ( area.y + ( 1 - edgeDir ) * d ) << csy ), *cuPfstCh, ctuData, pqSameCtu, useSimd );
             lfp.bs &= ~BsSet( 3, MAX_NUM_COMPONENT );
 
             if( !CU::isIntra( cu ) && !CU::isIntra( *cuP ) && cuP == cuPfstCh && cu.geoFlag() == false && cuP->geoFlag() == false )
@@ -928,7 +938,7 @@ void LoopFilter::xSetMaxFilterLengthPQFromTransformSizes( const CodingUnit& cu, 
             }
             
             if( bValue )
-              xGetBoundaryStrengthSingle<edgeDir>( lfp, cu, Position( ( area.x + edgeDir * d ) << csx, ( area.y + ( 1 - edgeDir ) * d ) << csy ), *cuPfstCh, ctuData, pqSameCtu );
+              xGetBoundaryStrengthSingle<edgeDir>( lfp, cu, Position( ( area.x + edgeDir * d ) << csx, ( area.y + ( 1 - edgeDir ) * d ) << csy ), *cuPfstCh, ctuData, pqSameCtu, useSimd );
             lfp.bs &= ~BsSet( 3, MAX_NUM_COMPONENT );
             OFFSET( lfpPtr, lfpStride, edgeDir, ( 1 - edgeDir ) );
           }
@@ -1055,24 +1065,31 @@ LFCUParam LoopFilter::xGetLoopfilterParam( const CodingUnit& cu ) const
   const PPS& pps = *cu.pps;
   const SPS& sps = *cu.sps;
 
-  const CodingUnit* cuLeft  = ( pos.x > 0 && cu.left  == nullptr ) ? cu.cs->getCU( pos.offset( -1, 0 ), cu.chType() ) : cu.left;
-  const CodingUnit* cuAbove = ( pos.y > 0 && cu.above == nullptr ) ? cu.cs->getCU( pos.offset( 0, -1 ), cu.chType() ) : cu.above;
-
-  const bool loopFilterAcrossSubPicEnabledFlagLeft = !sps.getSubPicInfoPresentFlag() ||
-                                                     ( pps.getSubPicFromCU( cu ).getloopFilterAcrossSubPicEnabledFlag() &&
-                                                       pps.getSubPicFromCU( *cuLeft ).getloopFilterAcrossSubPicEnabledFlag() );
-  const bool loopFilterAcrossSubPicEnabledFlagTop = !sps.getSubPicInfoPresentFlag() ||
-                                                    ( pps.getSubPicFromCU( cu ).getloopFilterAcrossSubPicEnabledFlag() &&
-                                                      pps.getSubPicFromCU( *cuAbove ).getloopFilterAcrossSubPicEnabledFlag() );
-
   LFCUParam stLFCUParam;   ///< status structure
-  stLFCUParam.leftEdge = ( pos.x > 0 ) && CU::isAvailable( cu, *cuLeft,  !pps.getLoopFilterAcrossSlicesEnabledFlag(), !pps.getLoopFilterAcrossTilesEnabledFlag(), !loopFilterAcrossSubPicEnabledFlagLeft );
-  stLFCUParam.topEdge  = ( pos.y > 0 ) && CU::isAvailable( cu, *cuAbove, !pps.getLoopFilterAcrossSlicesEnabledFlag(), !pps.getLoopFilterAcrossTilesEnabledFlag(), !loopFilterAcrossSubPicEnabledFlagTop );
+  if( pos.x > 0 )
+  {
+    const CodingUnit* cuLeft = cu.left ? cu.left : cu.cs->getCU( pos.offset( -1, 0 ), cu.chType() ) ;
+    const bool loopFilterAcrossSubPicEnabledFlagLeft = !sps.getSubPicInfoPresentFlag() ||
+                                                       ( pps.getSubPicFromCU( cu ).getloopFilterAcrossSubPicEnabledFlag() &&
+                                                         pps.getSubPicFromCU( *cuLeft ).getloopFilterAcrossSubPicEnabledFlag() );
+
+    stLFCUParam.leftEdge = CU::isAvailable( cu, *cuLeft, !pps.getLoopFilterAcrossSlicesEnabledFlag(), !pps.getLoopFilterAcrossTilesEnabledFlag(), !loopFilterAcrossSubPicEnabledFlagLeft );
+  }
+
+  if( pos.y > 0 )
+  {
+    const CodingUnit* cuAbove = cu.above ? cu.above : cu.cs->getCU( pos.offset( 0, -1 ), cu.chType() );
+    const bool loopFilterAcrossSubPicEnabledFlagTop = !sps.getSubPicInfoPresentFlag() ||
+                                                      ( pps.getSubPicFromCU( cu ).getloopFilterAcrossSubPicEnabledFlag() &&
+                                                        pps.getSubPicFromCU( *cuAbove ).getloopFilterAcrossSubPicEnabledFlag() );
+
+    stLFCUParam.topEdge = CU::isAvailable( cu, *cuAbove, !pps.getLoopFilterAcrossSlicesEnabledFlag(), !pps.getLoopFilterAcrossTilesEnabledFlag(), !loopFilterAcrossSubPicEnabledFlagTop );
+  }
   return stLFCUParam;
 }
 
 template<DeblockEdgeDir edgeDir>
-void LoopFilter::xGetBoundaryStrengthSingle( LoopFilterParam& lfp, const CodingUnit& cuQ, const Position &localPos, const CodingUnit& cuP, CtuData& ctuData, bool pqSameCtu ) const
+void LoopFilter::xGetBoundaryStrengthSingle( LoopFilterParam& lfp, const CodingUnit& cuQ, const Position &localPos, const CodingUnit& cuP, CtuData& ctuData, bool pqSameCtu, bool useSimd ) const
 {
   const Slice      &sliceQ = *cuQ.slice;
   const ChannelType chType = cuQ.chType();
@@ -1096,7 +1113,7 @@ void LoopFilter::xGetBoundaryStrengthSingle( LoopFilterParam& lfp, const CodingU
 
   if( hasChroma )
   {
-    const int qpBdOffset2     = cuQ.sps->getQpBDOffset( CH_C ) << 1;
+    const int qpBdOffset2     = cuQ.sps->getQpBDOffset() << 1;
     const bool isPQDiffCh     = !chType && cuP.treeType() != TREE_D;
     const TransformUnit &tuQc = cuQ.ispMode() ? *cuQ.lastTU : tuQ;
     const Position      posPc = isPQDiffCh ? recalcPosition( cuQ.chromaFormat, chType, CH_C, posP ) : Position();
@@ -1231,74 +1248,83 @@ void LoopFilter::xGetBoundaryStrengthSingle( LoopFilterParam& lfp, const CodingU
     if( ( piRefP0 == piRefQ0 && piRefP1 == piRefQ1 ) || ( piRefP0 == piRefQ1 && piRefP1 == piRefQ0 ) )
     {
 #if defined( TARGET_SIMD_X86 ) && ENABLE_SIMD_DBLF
-      const __m128i xmvP = _mm_unpacklo_epi64( refP0valid ? _mm_loadu_si64( ( const __m128i* ) &miP.mv[0] ) : _mm_setzero_si128(), refP1valid ? _mm_loadu_si64( ( const __m128i* ) &miP.mv[1] ) : _mm_setzero_si128() );
-      const __m128i xmvQ = _mm_unpacklo_epi64( refQ0valid ? _mm_loadu_si64( ( const __m128i* ) &miQ.mv[0] ) : _mm_setzero_si128(), refQ1valid ? _mm_loadu_si64( ( const __m128i* ) &miQ.mv[1] ) : _mm_setzero_si128() );
-      const __m128i xth  = _mm_set1_epi32( nThreshold - 1 );
-#else
-      Mv mvP[2] = { { 0, 0 }, { 0, 0 } }, mvQ[2] = { { 0, 0 }, { 0, 0 } };
-
-      if( refP0valid ) { mvP[0] = miP.mv[0]; }
-      if( refP1valid ) { mvP[1] = miP.mv[1]; }
-      if( refQ0valid ) { mvQ[0] = miQ.mv[0]; }
-      if( refQ1valid ) { mvQ[1] = miQ.mv[1]; }
-#endif
-      if( piRefP0 != piRefP1 )   // Different L0 & L1
+      if( useSimd )
       {
-        if( piRefP0 == piRefQ0 )
+        const __m128i xmvP = _mm_unpacklo_epi64( refP0valid ? _mm_loadu_si64( ( const __m128i* ) &miP.mv[0] ) : _mm_setzero_si128(), refP1valid ? _mm_loadu_si64( ( const __m128i* ) &miP.mv[1] ) : _mm_setzero_si128() );
+        const __m128i xmvQ = _mm_unpacklo_epi64( refQ0valid ? _mm_loadu_si64( ( const __m128i* ) &miQ.mv[0] ) : _mm_setzero_si128(), refQ1valid ? _mm_loadu_si64( ( const __m128i* ) &miQ.mv[1] ) : _mm_setzero_si128() );
+        const __m128i xth  = _mm_set1_epi32( nThreshold - 1 );
+
+        if( piRefP0 != piRefP1 )   // Different L0 & L1
         {
-#if defined( TARGET_SIMD_X86 ) && ENABLE_SIMD_DBLF
-          __m128i
-          xdiff = _mm_sub_epi32  ( xmvQ, xmvP );
-          xdiff = _mm_abs_epi32  ( xdiff );
-          xdiff = _mm_cmpgt_epi32( xdiff, xth );
-          uiBs  = _mm_testz_si128( xdiff, xdiff ) ? 0 : 1;
-#else
-          uiBs = ( ( abs( mvQ[0].getHor() - mvP[0].getHor() ) >= nThreshold ) || ( abs( mvQ[0].getVer() - mvP[0].getVer() ) >= nThreshold ) ||
-                   ( abs( mvQ[1].getHor() - mvP[1].getHor() ) >= nThreshold ) || ( abs( mvQ[1].getVer() - mvP[1].getVer() ) >= nThreshold ) )
-                 ? 1 : 0;
-#endif
+          if( piRefP0 == piRefQ0 )
+          {
+            __m128i
+            xdiff = _mm_sub_epi32  ( xmvQ, xmvP );
+            xdiff = _mm_abs_epi32  ( xdiff );
+            xdiff = _mm_cmpgt_epi32( xdiff, xth );
+            uiBs  = _mm_testz_si128( xdiff, xdiff ) ? 0 : 1;
+          }
+          else
+          {
+            __m128i
+            xmvQ1 = _mm_shuffle_epi32( xmvQ, ( 2 << 0 ) + ( 3 <<  2 ) + ( 0 << 4 ) + ( 1 << 6 ) );
+            __m128i
+            xdiff = _mm_sub_epi32  ( xmvQ1, xmvP );
+            xdiff = _mm_abs_epi32  ( xdiff );
+            xdiff = _mm_cmpgt_epi32( xdiff, xth );
+            uiBs  = _mm_testz_si128( xdiff, xdiff ) ? 0 : 1;
+          }
         }
         else
         {
-#if defined( TARGET_SIMD_X86 ) && ENABLE_SIMD_DBLF
           __m128i
-          xmvQ1 = _mm_shuffle_epi32( xmvQ, ( 2 << 0 ) + ( 3 <<  2 ) + ( 0 << 4 ) + ( 1 << 6 ) );
+          xmvQ1 = _mm_shuffle_epi32( xmvQ, ( 2 << 0 ) + ( 3 << 2 ) + ( 0 << 4 ) + ( 1 << 6 ) );
           __m128i
-          xdiff = _mm_sub_epi32  ( xmvQ1, xmvP );
-          xdiff = _mm_abs_epi32  ( xdiff );
+          xdiff = _mm_sub_epi32( xmvQ1, xmvP );
+          xdiff = _mm_abs_epi32( xdiff );
           xdiff = _mm_cmpgt_epi32( xdiff, xth );
           uiBs  = _mm_testz_si128( xdiff, xdiff ) ? 0 : 1;
-#else
-          uiBs = ( ( abs( mvQ[1].getHor() - mvP[0].getHor() ) >= nThreshold ) || ( abs( mvQ[1].getVer() - mvP[0].getVer() ) >= nThreshold ) ||
-                   ( abs( mvQ[0].getHor() - mvP[1].getHor() ) >= nThreshold ) || ( abs( mvQ[0].getVer() - mvP[1].getVer() ) >= nThreshold ) )
-                 ? 1 : 0;
-#endif
+
+          xdiff = _mm_sub_epi32( xmvQ, xmvP );
+          xdiff = _mm_abs_epi32( xdiff );
+          xdiff = _mm_cmpgt_epi32( xdiff, xth );
+          uiBs &= _mm_testz_si128( xdiff, xdiff ) ? 0 : 1;
         }
       }
-      else    // Same L0 & L1
-      {
-
-#if defined( TARGET_SIMD_X86 ) && ENABLE_SIMD_DBLF
-        __m128i
-        xmvQ1 = _mm_shuffle_epi32( xmvQ, ( 2 << 0 ) + ( 3 << 2 ) + ( 0 << 4 ) + ( 1 << 6 ) );
-        __m128i
-        xdiff = _mm_sub_epi32( xmvQ1, xmvP );
-        xdiff = _mm_abs_epi32( xdiff );
-        xdiff = _mm_cmpgt_epi32( xdiff, xth );
-        uiBs  = _mm_testz_si128( xdiff, xdiff ) ? 0 : 1;
-
-        xdiff = _mm_sub_epi32( xmvQ, xmvP );
-        xdiff = _mm_abs_epi32( xdiff );
-        xdiff = _mm_cmpgt_epi32( xdiff, xth );
-        uiBs &= _mm_testz_si128( xdiff, xdiff ) ? 0 : 1;
-#else
-        uiBs = ( ( abs( mvQ[0].getHor() - mvP[0].getHor() ) >= nThreshold ) || ( abs( mvQ[0].getVer() - mvP[0].getVer() ) >= nThreshold ) ||
-                 ( abs( mvQ[1].getHor() - mvP[1].getHor() ) >= nThreshold ) || ( abs( mvQ[1].getVer() - mvP[1].getVer() ) >= nThreshold ) )
-               &&
-               ( ( abs( mvQ[1].getHor() - mvP[0].getHor() ) >= nThreshold ) || ( abs( mvQ[1].getVer() - mvP[0].getVer() ) >= nThreshold ) ||
-                 ( abs( mvQ[0].getHor() - mvP[1].getHor() ) >= nThreshold ) || ( abs( mvQ[0].getVer() - mvP[1].getVer() ) >= nThreshold ) )
-               ? 1 : 0;
+      else
 #endif
+      {
+        Mv mvP[2] = { { 0, 0 }, { 0, 0 } }, mvQ[2] = { { 0, 0 }, { 0, 0 } };
+
+        if( refP0valid ) { mvP[0] = miP.mv[0]; }
+        if( refP1valid ) { mvP[1] = miP.mv[1]; }
+        if( refQ0valid ) { mvQ[0] = miQ.mv[0]; }
+        if( refQ1valid ) { mvQ[1] = miQ.mv[1]; }
+
+        if( piRefP0 != piRefP1 )   // Different L0 & L1
+        {
+          if( piRefP0 == piRefQ0 )
+          {
+            uiBs = ( ( abs( mvQ[0].getHor() - mvP[0].getHor() ) >= nThreshold ) || ( abs( mvQ[0].getVer() - mvP[0].getVer() ) >= nThreshold ) ||
+                     ( abs( mvQ[1].getHor() - mvP[1].getHor() ) >= nThreshold ) || ( abs( mvQ[1].getVer() - mvP[1].getVer() ) >= nThreshold ) )
+                 ? 1 : 0;
+          }
+          else
+          {
+            uiBs = ( ( abs( mvQ[1].getHor() - mvP[0].getHor() ) >= nThreshold ) || ( abs( mvQ[1].getVer() - mvP[0].getVer() ) >= nThreshold ) ||
+                     ( abs( mvQ[0].getHor() - mvP[1].getHor() ) >= nThreshold ) || ( abs( mvQ[0].getVer() - mvP[1].getVer() ) >= nThreshold ) )
+                 ? 1 : 0;
+          }
+        }
+        else
+        {
+          uiBs = ( ( abs( mvQ[0].getHor() - mvP[0].getHor() ) >= nThreshold ) || ( abs( mvQ[0].getVer() - mvP[0].getVer() ) >= nThreshold ) ||
+                   ( abs( mvQ[1].getHor() - mvP[1].getHor() ) >= nThreshold ) || ( abs( mvQ[1].getVer() - mvP[1].getVer() ) >= nThreshold ) )
+                  &&
+                 ( ( abs( mvQ[1].getHor() - mvP[0].getHor() ) >= nThreshold ) || ( abs( mvQ[1].getVer() - mvP[0].getVer() ) >= nThreshold ) ||
+                   ( abs( mvQ[0].getHor() - mvP[1].getHor() ) >= nThreshold ) || ( abs( mvQ[0].getVer() - mvP[1].getVer() ) >= nThreshold ) )
+               ? 1 : 0;
+        }
       }
     }
     else // for all different Ref_Idx
@@ -1312,8 +1338,8 @@ void LoopFilter::xGetBoundaryStrengthSingle( LoopFilterParam& lfp, const CodingU
   }
 
   // pcSlice->isInterP()
-  CHECK_RECOVERABLE( CU::isInter( cuP ) && isMotionInvalid( miP.miRefIdx[0], MI_NOT_VALID ), "Invalid reference picture list index" );
-  CHECK_RECOVERABLE( CU::isInter( cuP ) && isMotionInvalid( miQ.miRefIdx[0], MI_NOT_VALID ), "Invalid reference picture list index" );
+  CHECK( CU::isInter( cuP ) && isMotionInvalid( miP.miRefIdx[0], MI_NOT_VALID ), "Invalid reference picture list index" );
+  CHECK( CU::isInter( cuP ) && isMotionInvalid( miQ.miRefIdx[0], MI_NOT_VALID ), "Invalid reference picture list index" );
 
   const Picture *piRefP0 = ( CU::isIBC( cuP ) ? sliceP.getPic() : sliceP.getRefPic( REF_PIC_LIST_0, miP.miRefIdx[0] ) );
   const Picture *piRefQ0 = ( CU::isIBC( cuQ ) ? sliceQ.getPic() : sliceQ.getRefPic( REF_PIC_LIST_0, miQ.miRefIdx[0] ) );
@@ -1439,7 +1465,7 @@ void LoopFilter::xEdgeFilterLuma( CodingStructure& cs, const Position& pos, cons
   Pel *           piSrc        = picYuvRec.bufAt( pos );
   const ptrdiff_t iStride      = picYuvRec.stride;
   
-  const int       bitDepthLuma = slice.getSPS()->getBitDepth( CHANNEL_TYPE_LUMA );
+  const int       bitDepthLuma = slice.getSPS()->getBitDepth();
   const ClpRng&         clpRng = slice.clpRng( COMPONENT_Y );
 
   const int  betaOffsetDiv2    = slice.getDeblockingFilterBetaOffsetDiv2();
@@ -1604,7 +1630,7 @@ void LoopFilter::xEdgeFilterChroma( CodingStructure &cs, const Position &pos, co
   Pel *              piSrcCr             = picYuvRecCr.bufAt( pos );
   const ptrdiff_t    iStride             = picYuvRecCb.stride;
   const SPS &        sps                 = *cs.sps;
-  const int          bitDepthChroma      = sps.getBitDepth( CHANNEL_TYPE_CHROMA );
+  const int          bitDepthChroma      = sps.getBitDepth();
 
   const int tcOffsetDiv2[2]              = { slice.getDeblockingFilterCbTcOffsetDiv2(),   slice.getDeblockingFilterCrTcOffsetDiv2() };
   const int betaOffsetDiv2[2]            = { slice.getDeblockingFilterCbBetaOffsetDiv2(), slice.getDeblockingFilterCrBetaOffsetDiv2() };
