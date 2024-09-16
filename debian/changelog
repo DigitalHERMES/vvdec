@@ -1,3 +1,9 @@
+vvdec (2.3.0-2) unstable; urgency=medium
+
+  * Git fixes.
+
+ -- Rafael Diniz <rafael@rhizomatica.org>  Mon, 16 Sep 2024 22:08:01 +0100
+
 vvdec (2.3.0-1) unstable; urgency=medium
 
   * Sync with new upstream release.
