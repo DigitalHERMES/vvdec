@@ -42,6 +42,8 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "vvdec/vvdec.h"
 #include "vvdecimpl.h"
 
+#include <stdio.h>
+
 #include "vvdec/version.h"
 
 #ifdef __cplusplus
@@ -64,19 +66,12 @@ VVDEC_DECL void vvdec_params_default(vvdecParams *params)
 
   params->threads            = -1;                      // thread count                          ( default: -1 )
   params->parseDelay         = -1;                      // number of frames to parse in parallel ( default: -1 )
-  params->upscaleOutput      = VVDEC_UPSCALING_OFF;     // do internal upscaling of rpr pictures to dest. resolution ( default: off )
   params->logLevel           = VVDEC_WARNING;           // verbosity level
   params->verifyPictureHash  = false;                   // verify picture, if digest is available, true: check hash in SEI messages if available, false: ignore SEI message
-  params->removePadding      = false;                   // copy output pictures to new buffer to remove padding (stride==width)
   params->opaque             = nullptr;                 // opaque pointer for private user data ( can be used to carry caller specific data or contexts )
   params->simd               = VVDEC_SIMD_DEFAULT;      // set specific simd optimization (default: max. availalbe)
   params->errHandlingFlags   = VVDEC_ERR_HANDLING_OFF;  // no special error handling
-#if ENABLE_FILM_GRAIN
   params->filmGrainSynthesis = true;                    // enable film grain synthesis using Film Grain Charactersitics SEI ( default: true )
-#else
-  params->filmGrainSynthesis = false;                   // built without film grain support
-#endif
-  params->parseThreads       = -1;                      // DEPRECATED. Use `parseDelay` instead. Will be removed in the future. Until then, this value is copied to parseDelay if set.
 }
 
 VVDEC_DECL vvdecParams* vvdec_params_alloc()
@@ -183,31 +178,6 @@ static int paramCheck( vvdecParams *params )
     ret = -1;
   }
 
-  if( (int)params->upscaleOutput > (int)VVDEC_UPSCALING_RESCALE || (int)params->upscaleOutput < (int)VVDEC_UPSCALING_OFF )
-  {
-    vvdec::msg( vvdec::ERROR, "unsupported upscaleOutput mode. must be 0 <= upscaleOutput <= 2\n" );
-    ret = -1;
-  }
-
-  if( params->parseThreads != -1 )
-  {
-    vvdec::msg( vvdec::WARNING, "Used deprecated field parseThreads. Use parseDelay instead. parseThreads will be removed in the future. Until then, this value is copied to parseDelay if set.\n" );
-
-    if( params->parseThreads != params->parseDelay && params->parseDelay != -1 )
-    {
-      vvdec::msg( vvdec::ERROR, "parseDelay and parseThreads were both set, but to different values. Only set parseDelay in the future.\n" );
-      ret = -1;
-    }
-  }
-
-#if !ENABLE_FILM_GRAIN
-  if( params->filmGrainSynthesis )
-  {
-    vvdec::msg( vvdec::ERROR, "VVdeC was built without ENABLE_FILM_GRAIN. filmGrainSynthesis parameter must be 0.\n" );
-    ret = -1;
-  }
-#endif   // !ENABLE_FILM_GRAIN
-
   return ret;
 }
 
@@ -222,11 +192,6 @@ VVDEC_DECL vvdecDecoder* vvdec_decoder_open( vvdecParams *params)
   if ( 0 != paramCheck( params ))
   {
     return nullptr;
-  }
-
-  if( params->parseThreads != -1 && params->parseDelay == -1 )   // overwrite parseDelay with deprecated value parseThreads if set
-  {
-    params->parseDelay = params->parseThreads;
   }
 
   vvdec::VVDecImpl* decCtx = new vvdec::VVDecImpl();
@@ -257,17 +222,6 @@ VVDEC_DECL vvdecDecoder* vvdec_decoder_open_with_allocator( vvdecParams *params,
 {
   if ( 0 != paramCheck( params ))
   {
-    return nullptr;
-  }
-
-  if ( params->removePadding )
-  {
-    vvdec::msg( vvdec::ERROR, "cannot use removePadding when vvdecCreateBufferCallback is set (not implemented yet)\n" );
-    return nullptr;
-  }
-  if ( params->upscaleOutput )
-  {
-    vvdec::msg( vvdec::ERROR, "cannot use upscaleOutput when vvdecCreateBufferCallback is set (not implemented yet)\n" );
     return nullptr;
   }
 
